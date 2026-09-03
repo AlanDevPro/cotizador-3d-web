@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, Fragment } from "react";
 import {
   Building2,
   Package,
@@ -66,8 +66,8 @@ type TabId = "general" | string;
 // ==========================================
 
 const DEFAULT_TAGLINE = "Servicios de manufactura, prototipado e impresión 3D";
-const DEFAULT_VALIDEZ = "Cotización válida por 7 días";
-const DEFAULT_TITULO = "COTIZACIÓN COMERCIAL";
+const DEFAULT_VALIDEZ = "Cotización válida por 1 días";
+const DEFAULT_TITULO = "COTIZACIÓN IMPRESIÓN 3D";
 const DEFAULT_FOOTER = "Gracias por confiar en nuestros servicios. Calidad y precisión en cada proyecto.";
 const DEFAULT_UBICACION = "Dirección del taller no configurada. Contáctanos para más detalles.";
 const DEFAULT_GARANTIA_DIAS = 15;
@@ -136,6 +136,53 @@ function detalleTecnicoPieza(p: PiezaDetalle): string | null {
   if (typeof p.altura_capa_mm === "number") partes.push(`Capa: ${p.altura_capa_mm}mm`);
   if (typeof p.peso_gramos === "number") partes.push(`Peso: ~${p.peso_gramos}g`);
   return partes.length > 0 ? partes.join(" · ") : null;
+}
+
+/**
+ * Divide un bloque de texto de políticas en viñetas individuales.
+ * Soporta viñetas marcadas con "* " (o "- ") separadas por saltos de línea,
+ * o incluso todas en una sola línea seguida.
+ *
+ * Ejemplo de entrada:
+ *   "* Anticipo: Se requiere un 50%...\n* Tiempo de entrega: Diseño..."
+ *
+ * Salida:
+ *   ["* Anticipo: Se requiere un 50%...", "* Tiempo de entrega: Diseño..."]
+ */
+function parsearViñetas(texto: string): string[] {
+  return texto
+    .split(/\r?\n|(?=\*\s)/) // corta por salto de línea o justo antes de cada "* "
+    .map((linea) => linea.trim())
+    .filter((linea) => linea.length > 0);
+}
+
+/**
+ * Resalta en negrita la etiqueta de una política (lo que va entre "* " y ":").
+ * Ej: "* Anticipo: Se requiere un 50%..." →
+ *     <strong>Anticipo:</strong> Se requiere un 50%...
+ *
+ * - Quita el marcador de viñeta "* " o "- " al inicio, si existe.
+ * - Si el texto no contiene ":", se devuelve tal cual, sin resaltar nada.
+ * - Solo separa en la PRIMERA aparición de ":" (evita cortar mal textos
+ *   que mencionen horas u otro ":" dentro de la explicación).
+ */
+function renderTextoConEtiquetaResaltada(texto: string) {
+  const textoLimpio = texto.replace(/^[*-]\s*/, "");
+  const indice = textoLimpio.indexOf(":");
+
+  if (indice === -1) {
+    return <>{textoLimpio}</>;
+  }
+
+  const etiqueta = textoLimpio.slice(0, indice + 1); // incluye el ":"
+  const resto = textoLimpio.slice(indice + 1);
+
+  return (
+    <>
+      <strong className="font-bold text-white">{etiqueta}</strong>
+      {resto}
+    </>
+  );
 }
 
 // ==========================================
@@ -296,7 +343,7 @@ export function VoucherPublico({
   const politicas = voucherData?.policies?.length
     ? voucherData.policies
     : empresa?.garantia
-      ? [{ label: "Garantía", text: empresa.garantia }]
+      ? [{ text: empresa.garantia }]
       : [];
 
   const garantiaDias = voucherData?.garantiaDias ?? DEFAULT_GARANTIA_DIAS;
@@ -519,22 +566,24 @@ export function VoucherPublico({
         </div>
 
         {/* Políticas */}
-        {politicas.length > 0 && (
-          <div className="mt-6 rounded-xl bg-[var(--dark-bg)] p-4 text-white">
-            <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--brand)]">
-              <ShieldCheck className="h-4 w-4" />
-              Políticas de contratación y servicio
-            </p>
-            <div className="mt-2 space-y-2 text-xs leading-relaxed text-slate-300">
-              {politicas.map((pol, idx) => (
-                <p key={idx}>
-                  <span className="font-semibold text-white">{pol.label}: </span>
-                  {pol.text}
-                </p>
-              ))}
-            </div>
-          </div>
-        )}
+{politicas.length > 0 && (
+  <div className="mt-6 rounded-xl bg-[var(--dark-bg)] p-4 text-white">
+    <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--brand)]">
+      <ShieldCheck className="h-4 w-4" />
+      Políticas de contratación y servicio
+    </p>
+    <div className="mt-2 space-y-2 text-xs leading-relaxed text-slate-300">
+      {politicas.flatMap((pol, idx) =>
+        parsearViñetas(pol.text).map((linea, vIdx) => (
+          <p key={`${idx}-${vIdx}`} className="flex gap-1.5">
+            <span className="text-[var(--brand)] mt-0.5">•</span>
+            <span>{renderTextoConEtiquetaResaltada(linea)}</span>
+          </p>
+        ))
+      )}
+    </div>
+  </div>
+)}
 
         {/* Flujo de Confirmación */}
         {pedidoAceptado && (
