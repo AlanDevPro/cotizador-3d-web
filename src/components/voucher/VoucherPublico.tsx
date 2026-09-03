@@ -83,6 +83,7 @@ export interface CotizacionPublica {
   creado_en: string;
   precio_final: number;
   monto_impuesto?: number;
+  costo_diseno_total?: number;
   piezas: PiezaDetalle[];
   empresa?: EmpresaInfo;
   voucher_data?: VoucherData;
@@ -318,6 +319,7 @@ export function VoucherPublico({
 
   const subtotalVista = filasVista.reduce((acc, f) => acc + f.total, 0);
   const montoImpuestoVista = esGeneral ? cotizacion.monto_impuesto || 0 : 0;
+  const costoDisenoVista = esGeneral ? cotizacion.costo_diseno_total || 0 : 0;
   const totalVista = subtotalVista + montoImpuestoVista;
 
   // El comprobante SIEMPRE muestra el pedido completo (todas las piezas),
@@ -517,18 +519,7 @@ export function VoucherPublico({
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 pt-1 text-xs">
-              <div className="flex items-center gap-1.5">
-                <Layers className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-semibold uppercase text-[10px] text-slate-500">Material:</span>
-                <span className="font-bold text-slate-800">{materialNombre}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Palette className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-semibold uppercase text-[10px] text-slate-500">Color:</span>
-                <span className="font-bold text-slate-800">{colorNombre}</span>
-              </div>
-            </div>
+            
           </div>
         </div>
 
@@ -570,6 +561,13 @@ export function VoucherPublico({
               </div>
             )}
 
+            {costoDisenoVista > 0 && (
+  <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-xs text-slate-600 shadow-xs">
+    <span className="flex items-center gap-1.5"><Scissors className="h-3.5 w-3.5 text-slate-400" /> Personalización / Diseño</span>
+    <span className="font-medium text-slate-900">{formatBs(costoDisenoVista)}</span>
+  </div>
+)}
+
             <div className="flex items-center justify-between rounded-lg border border-[var(--brand)]/30 bg-[var(--brand-light)] px-3 py-2.5 text-sm font-bold text-slate-900">
               <span className="flex items-center gap-1.5 uppercase text-xs tracking-wider text-[var(--brand-dark)]">
                 <Receipt className="h-4 w-4" /> Total a pagar
@@ -597,25 +595,7 @@ export function VoucherPublico({
           </div>
         )}
 
-        {/* Botones Iniciales de Aceptación */}
-        {!pedidoAceptado && (
-          <div className="mt-6 flex gap-3">
-            <button
-              type="button"
-              onClick={onCancelarPedido}
-              className="flex-1 rounded-xl border border-slate-300 bg-white py-3 text-xs font-bold uppercase tracking-wider text-slate-700 transition hover:bg-slate-50"
-            >
-              Cancelar pedido
-            </button>
-            <button
-              type="button"
-              onClick={handleAceptarPedido}
-              className="flex-1 rounded-xl bg-[var(--brand)] py-3 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[var(--brand-dark)]"
-            >
-              Aceptar pedido
-            </button>
-          </div>
-        )}
+        
 
         {/* Flujo de Confirmación */}
         {pedidoAceptado && (

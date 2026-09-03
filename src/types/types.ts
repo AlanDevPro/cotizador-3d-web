@@ -1,4 +1,6 @@
-export type VoucherState = "cotizacion" | "pago" | "cancelado";
+// PATCH para src/features/cotizacion/types.ts (app móvil)
+// Reemplaza el bloque "VOUCHER / PDF" existente por este, para que coincida
+// 1:1 con src/types/voucher.ts del proyecto web (cotizador-3d-web).
 
 export interface VoucherPricingTier {
   label: string;
@@ -24,11 +26,7 @@ export interface VoucherEspecificaciones {
   materialColor?: string;
 }
 
-/**
- * Desglose de costos reutilizable tanto para la cotización general
- * del proyecto como para cada pieza individual.
- * Espeja DesglosePiezaResultado / ResultadoCotizacion de la app móvil.
- */
+/** Espeja DesglosePiezaResultado / ResultadoCotizacion; reutilizable para general y por pieza */
 export interface VoucherDesglose {
   costoMaterial: number;
   costoManoObra: number;
@@ -39,7 +37,6 @@ export interface VoucherDesglose {
   montoGanancia: number;
   margenAplicadoPct: number;
   precioTotal: number;
-  /** Solo aplica a piezas individuales (la general no tiene un único peso/tiempo) */
   pesoGramos?: number;
   tiempoImpresionHoras?: number;
   tiempoImpresionMinutos?: number;
@@ -70,16 +67,13 @@ export interface VoucherData {
   websiteUrl?: string;
   currencySymbol: string;
 
-  // Campos requeridos para la vista de pago
   clienteNombre?: string;
   montoTotal?: number;
   montoAnticipo?: number;
   saldoPendiente?: number;
   qrUrl?: string;
 
-  // NUEVO: cotización por pieza + general (pestañas, igual que en la app)
-  /** Desglose acumulado de TODO el proyecto (todas las piezas juntas) */
+  // NUEVO: cotización por pieza + general
   generalDesglose?: VoucherDesglose;
-  /** Una entrada por cada pieza cotizada. Si viene vacío/undefined, se usa el layout clásico. */
   piezas?: VoucherPiezaDetalle[];
 }
