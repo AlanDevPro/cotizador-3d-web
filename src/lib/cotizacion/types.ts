@@ -16,6 +16,12 @@ export interface PiezaDetalle {
   costo_base_pieza: number;
   monto_ganancia_pieza: number;
   precio_total_pieza: number;
+
+  // Campos opcionales usados por la vista del voucher (aún no poblados por el servicio)
+  material?: string;
+  color?: string;
+  infill_porcentaje?: number;
+  altura_capa_mm?: number;
 }
 
 export interface EmpresaInfo {
@@ -44,6 +50,10 @@ export interface VoucherData {
   unitPriceLabel?: string;
   unitPrice?: number;
   currencySymbol?: string;
+  material?: string;
+  color?: string;
+  garantiaDias?: number;
+  notasLegales?: string[];
   items?: Array<{
     description: string;
     quantity: number;
@@ -68,6 +78,7 @@ export interface CotizacionPublica {
   subtotal_costo_base: number;
   monto_ganancia: number;
   monto_impuesto: number;
+  costo_diseno_total: number;
   precio_final: number;
   margen_ganancia_aplicado_pct: number;
   empresa: EmpresaInfo | null;

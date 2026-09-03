@@ -16,79 +16,25 @@ import {
   User,
   FileText,
   Receipt,
-  ExternalLink,
   ShieldCheck,
   Phone,
   Hash,
   UserCog,
-  Layers,
   Palette,
   Scale,
-  //Instagram,
-  //Facebook,
   Scissors,
   Ticket,
 } from "lucide-react";
+import type {
+  CotizacionPublica,
+  PiezaDetalle,
+  VoucherData,
+} from "@/lib/cotizacion/types";
 
 // ==========================================
-// INTERFACES & TIPOS DEFINIDOS
+// TIPOS ESPECÍFICOS DE ESTE COMPONENTE
+// (los tipos de dominio vienen de @/lib/cotizacion/types)
 // ==========================================
-
-export interface PiezaDetalle {
-  id: string;
-  nombre_pieza: string;
-  cantidad: number;
-  precio_total_pieza: number;
-  material?: string;
-  color?: string;
-  infill_porcentaje?: number;
-  altura_capa_mm?: number;
-  peso_gramos?: number;
-  [key: string]: unknown;
-}
-
-export interface EmpresaInfo {
-  nombre?: string;
-  logo_url?: string;
-  garantia?: string;
-  sitio_web?: string;
-  nit?: string;
-  telefono?: string;
-  direccion?: string;
-  [key: string]: unknown;
-}
-
-export interface VoucherPolicy {
-  label: string;
-  text: string;
-}
-
-export interface VoucherData {
-  documentTitle?: string;
-  companyTagline?: string;
-  validityLabel?: string;
-  footerNote?: string;
-  logoUri?: string;
-  productImageUri?: string;
-  material?: string;
-  color?: string;
-  policies?: VoucherPolicy[];
-  garantiaDias?: number;
-  notasLegales?: string[];
-  [key: string]: unknown;
-}
-
-export interface CotizacionPublica {
-  id: string;
-  creado_en: string;
-  precio_final: number;
-  monto_impuesto?: number;
-  costo_diseno_total?: number;
-  piezas: PiezaDetalle[];
-  empresa?: EmpresaInfo;
-  voucher_data?: VoucherData;
-  [key: string]: unknown;
-}
 
 export interface VoucherPublicoProps {
   cotizacion: CotizacionPublica;
@@ -339,7 +285,8 @@ export function VoucherPublico({
 
   const subtotalOrden = filasComprobante.reduce((acc, f) => acc + f.total, 0);
   const montoImpuestoOrden = cotizacion.monto_impuesto || 0;
-  const totalOrden = subtotalOrden + montoImpuestoOrden;
+  const costoDisenoOrden = cotizacion.costo_diseno_total || 0;
+  const totalOrden = subtotalOrden + montoImpuestoOrden + costoDisenoOrden;
 
   const costoEnvio = tipoEntrega === "domicilio" ? COSTO_ENVIO_DOMICILIO : 0;
   const totalConEnvio = totalOrden + costoEnvio;
@@ -354,8 +301,6 @@ export function VoucherPublico({
 
   const garantiaDias = voucherData?.garantiaDias ?? DEFAULT_GARANTIA_DIAS;
 
-  const materialNombre = voucherData?.material || "PLA - Genérico";
-  const colorNombre = voucherData?.color || "A definir / Según catálogo";
   const imagenProducto = voucherData?.productImageUri;
 
   const codigoPedido =
@@ -409,9 +354,7 @@ export function VoucherPublico({
   const seleccionCompleta = Boolean(tipoEntrega && metodoPago);
 
   const redesSociales = [
-    //{ url: instagramUrl, Icon: Instagram, label: "Instagram" },
     { url: whatsappUrl, Icon: WhatsAppIcon, label: "WhatsApp" },
-    //{ url: facebookUrl, Icon: Facebook, label: "Facebook" },
     { url: tiktokUrl, Icon: TikTokIcon, label: "TikTok" },
   ].filter((r) => r.url);
 
@@ -518,8 +461,6 @@ export function VoucherPublico({
                 {formatBs(precioMostrado)}
               </p>
             </div>
-
-            
           </div>
         </div>
 
@@ -562,11 +503,11 @@ export function VoucherPublico({
             )}
 
             {costoDisenoVista > 0 && (
-  <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-xs text-slate-600 shadow-xs">
-    <span className="flex items-center gap-1.5"><Scissors className="h-3.5 w-3.5 text-slate-400" /> Personalización / Diseño</span>
-    <span className="font-medium text-slate-900">{formatBs(costoDisenoVista)}</span>
-  </div>
-)}
+              <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-xs text-slate-600 shadow-xs">
+                <span className="flex items-center gap-1.5"><Scissors className="h-3.5 w-3.5 text-slate-400" /> Personalización / Diseño</span>
+                <span className="font-medium text-slate-900">{formatBs(costoDisenoVista)}</span>
+              </div>
+            )}
 
             <div className="flex items-center justify-between rounded-lg border border-[var(--brand)]/30 bg-[var(--brand-light)] px-3 py-2.5 text-sm font-bold text-slate-900">
               <span className="flex items-center gap-1.5 uppercase text-xs tracking-wider text-[var(--brand-dark)]">
@@ -594,8 +535,6 @@ export function VoucherPublico({
             </div>
           </div>
         )}
-
-        
 
         {/* Flujo de Confirmación */}
         {pedidoAceptado && (
@@ -711,284 +650,289 @@ export function VoucherPublico({
                 </div>
 
                 {/* ===== TICKET / BOLETO ===== */}
-<div className="relative mx-auto max-w-md space-y-4">
-  {/* Tarjeta del Ticket */}
-  <div className="overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-slate-200">
-    
-    {/* Sección: identidad de la empresa */}
-    <div className="flex flex-col items-center gap-2 px-6 pt-5 pb-4 text-center">
-      {(empresa?.logo_url || voucherData?.logoUri) ? (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img
-          src={empresa?.logo_url || voucherData?.logoUri}
-          alt={empresaNombre}
-          className="h-12 w-12 rounded-lg border border-slate-200 object-contain p-1"
-        />
-      ) : (
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--dark-bg)]">
-          <Building2 className="h-6 w-6 text-white" />
-        </div>
-      )}
-      <p className="text-sm font-black uppercase tracking-wide text-slate-900">
-        {empresaNombre}
-      </p>
-      {empresa?.nit && (
-        <p className="text-[11px] font-medium text-slate-500">NIT / Reg. Comercial: {empresa.nit}</p>
-      )}
-      {(empresa?.direccion || empresa?.telefono) && (
-        <p className="text-[11px] text-slate-500">
-          {[empresa?.direccion, empresa?.telefono].filter(Boolean).join("  ·  ")}
-        </p>
-      )}
-    </div>
+                <div className="relative mx-auto max-w-md space-y-4">
+                  {/* Tarjeta del Ticket */}
+                  <div className="overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-slate-200">
 
-    {/* Título del ticket */}
-    <div className="bg-[var(--brand)] py-1.5 text-center">
-      <p className="flex items-center justify-center gap-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-white">
-        Comprobante de Pedido
-      </p>
-    </div>
+                    {/* Sección: identidad de la empresa */}
+                    <div className="flex flex-col items-center gap-2 px-6 pt-5 pb-4 text-center">
+                      {(empresa?.logo_url || voucherData?.logoUri) ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={empresa?.logo_url || voucherData?.logoUri}
+                          alt={empresaNombre}
+                          className="h-12 w-12 rounded-lg border border-slate-200 object-contain p-1"
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--dark-bg)]">
+                          <Building2 className="h-6 w-6 text-white" />
+                        </div>
+                      )}
+                      <p className="text-sm font-black uppercase tracking-wide text-slate-900">
+                        {empresaNombre}
+                      </p>
+                      {empresa?.nit && (
+                        <p className="text-[11px] font-medium text-slate-500">NIT / Reg. Comercial: {empresa.nit}</p>
+                      )}
+                      {(empresa?.direccion_fiscal || empresa?.whatsapp) && (
+                        <p className="text-[11px] text-slate-500">
+                          {[empresa?.direccion_fiscal, empresa?.whatsapp].filter(Boolean).join("  ·  ")}
+                        </p>
+                      )}
+                    </div>
 
-    {/* Perforación del ticket */}
-    <div className="relative border-b-2 border-dashed border-slate-300 px-6 py-3">
-      <span className="absolute -left-3 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-slate-50" />
-      <span className="absolute -right-3 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-slate-50" />
-      <div className="flex flex-wrap items-center justify-between gap-y-1 text-xs text-slate-600">
-        <span className="flex items-center gap-1.5 font-mono font-bold text-slate-900">
-          <Hash className="h-3.5 w-3.5 text-slate-400" />
-          {codigoPedido}
-        </span>
-        <span className="flex items-center gap-1.5 font-mono">
-          <Calendar className="h-3.5 w-3.5 text-slate-400" />
-          {formatFechaHora(fechaEmision)}
-        </span>
-      </div>
-      {atendidoPor && (
-        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
-          <UserCog className="h-3.5 w-3.5 text-slate-400" />
-          Atendido por: <span className="font-semibold text-slate-700">{atendidoPor}</span>
-        </p>
-      )}
-    </div>
+                    {/* Título del ticket */}
+                    <div className="bg-[var(--brand)] py-1.5 text-center">
+                      <p className="flex items-center justify-center gap-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-white">
+                        Comprobante de Pedido
+                      </p>
+                    </div>
 
-    {/* Sección: cliente */}
-    <div className="border-b-2 border-dashed border-slate-300 px-6 py-3 space-y-1.5 text-xs">
-      <p className="flex items-center gap-1.5 font-bold text-slate-900">
-        <User className="h-3.5 w-3.5 text-[var(--brand)]" />
-        {nombreClienteMostrado}
-      </p>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-500">
-        {clienteDocumento && <span>NIT/CI: <span className="font-medium text-slate-700">{clienteDocumento}</span></span>}
-        {clienteTelefono && (
-          <span className="flex items-center gap-1">
-            <Phone className="h-3 w-3" /> {clienteTelefono}
-          </span>
-        )}
-      </div>
-      <p className="flex items-center gap-1.5 text-slate-500">
-        {tipoEntrega === "recoger" ? <Store className="h-3.5 w-3.5" /> : <Truck className="h-3.5 w-3.5" />}
-        Entrega: <span className="font-medium text-slate-700">
-          {tipoEntrega === "recoger" ? "Recoger en el taller" : "Envío a domicilio"}
-        </span>
-      </p>
-    </div>
+                    {/* Perforación del ticket */}
+                    <div className="relative border-b-2 border-dashed border-slate-300 px-6 py-3">
+                      <span className="absolute -left-3 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-slate-50" />
+                      <span className="absolute -right-3 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-slate-50" />
+                      <div className="flex flex-wrap items-center justify-between gap-y-1 text-xs text-slate-600">
+                        <span className="flex items-center gap-1.5 font-mono font-bold text-slate-900">
+                          <Hash className="h-3.5 w-3.5 text-slate-400" />
+                          {codigoPedido}
+                        </span>
+                        <span className="flex items-center gap-1.5 font-mono">
+                          <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                          {formatFechaHora(fechaEmision)}
+                        </span>
+                      </div>
+                      {atendidoPor && (
+                        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
+                          <UserCog className="h-3.5 w-3.5 text-slate-400" />
+                          Atendido por: <span className="font-semibold text-slate-700">{atendidoPor}</span>
+                        </p>
+                      )}
+                    </div>
 
-    {/* Sección: detalle del trabajo */}
-    <div className="relative border-b-2 border-dashed border-slate-300 px-6 py-3">
-      <span className="absolute -left-3 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-slate-50" />
-      <span className="absolute -right-3 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-slate-50" />
-      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-900">
-        <FileText className="h-3.5 w-3.5 text-[var(--brand)]" />
-        Detalle del trabajo (Impresión 3D)
-      </p>
-      <table className="w-full text-left text-xs">
-        <thead>
-          <tr className="text-[10px] uppercase tracking-wider text-slate-400">
-            <th className="pb-1.5 font-semibold"><EncabezadoTabla icon={Hash} label="Cant." /></th>
-            <th className="pb-1.5 font-semibold"><EncabezadoTabla icon={Package} label="Descripción" /></th>
-            <th className="pb-1.5 text-right font-semibold"><EncabezadoTabla icon={Banknote} label="Unit." align="right" /></th>
-            <th className="pb-1.5 text-right font-semibold"><EncabezadoTabla icon={Receipt} label="Total" align="right" /></th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {filasComprobante.map((fila, idx) => (
-            <tr key={idx} className="align-top">
-              <td className="py-1.5 pr-1 font-mono text-slate-500">{fila.cantidad}x</td>
-              <td className="py-1.5 pr-2">
-                <p className="font-semibold text-slate-900">{fila.descripcion}</p>
-                {(fila.materialColor || fila.detalleTecnico) && (
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-400">
-                    {fila.materialColor && (
-                      <span className="flex items-center gap-1">
-                        <Palette className="h-2.5 w-2.5" /> {fila.materialColor}
-                      </span>
+                    {/* Sección: cliente */}
+                    <div className="border-b-2 border-dashed border-slate-300 px-6 py-3 space-y-1.5 text-xs">
+                      <p className="flex items-center gap-1.5 font-bold text-slate-900">
+                        <User className="h-3.5 w-3.5 text-[var(--brand)]" />
+                        {nombreClienteMostrado}
+                      </p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-500">
+                        {clienteDocumento && <span>NIT/CI: <span className="font-medium text-slate-700">{clienteDocumento}</span></span>}
+                        {clienteTelefono && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {clienteTelefono}
+                          </span>
+                        )}
+                      </div>
+                      <p className="flex items-center gap-1.5 text-slate-500">
+                        {tipoEntrega === "recoger" ? <Store className="h-3.5 w-3.5" /> : <Truck className="h-3.5 w-3.5" />}
+                        Entrega: <span className="font-medium text-slate-700">
+                          {tipoEntrega === "recoger" ? "Recoger en el taller" : "Envío a domicilio"}
+                        </span>
+                      </p>
+                    </div>
+
+                    {/* Sección: detalle del trabajo */}
+                    <div className="relative border-b-2 border-dashed border-slate-300 px-6 py-3">
+                      <span className="absolute -left-3 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-slate-50" />
+                      <span className="absolute -right-3 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-slate-50" />
+                      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-900">
+                        <FileText className="h-3.5 w-3.5 text-[var(--brand)]" />
+                        Detalle del trabajo (Impresión 3D)
+                      </p>
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="text-[10px] uppercase tracking-wider text-slate-400">
+                            <th className="pb-1.5 font-semibold"><EncabezadoTabla icon={Hash} label="Cant." /></th>
+                            <th className="pb-1.5 font-semibold"><EncabezadoTabla icon={Package} label="Descripción" /></th>
+                            <th className="pb-1.5 text-right font-semibold"><EncabezadoTabla icon={Banknote} label="Unit." align="right" /></th>
+                            <th className="pb-1.5 text-right font-semibold"><EncabezadoTabla icon={Receipt} label="Total" align="right" /></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filasComprobante.map((fila, idx) => (
+                            <tr key={idx} className="align-top">
+                              <td className="py-1.5 pr-1 font-mono text-slate-500">{fila.cantidad}x</td>
+                              <td className="py-1.5 pr-2">
+                                <p className="font-semibold text-slate-900">{fila.descripcion}</p>
+                                {(fila.materialColor || fila.detalleTecnico) && (
+                                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-400">
+                                    {fila.materialColor && (
+                                      <span className="flex items-center gap-1">
+                                        <Palette className="h-2.5 w-2.5" /> {fila.materialColor}
+                                      </span>
+                                    )}
+                                  </p>
+                                )}
+                              </td>
+                              <td className="py-1.5 text-right font-mono text-slate-600">{formatBs(fila.precioUnitario)}</td>
+                              <td className="py-1.5 text-right font-mono font-bold text-slate-900">{formatBs(fila.total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Sección: totales y anticipo */}
+                    <div className="px-6 py-3 space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
+                        <span className="flex items-center gap-1.5"><Scale className="h-3.5 w-3.5 text-slate-400" /> Subtotal</span>
+                        <span className="font-mono font-medium text-slate-900">{formatBs(subtotalOrden)}</span>
+                      </div>
+                      {montoImpuestoOrden > 0 && (
+                        <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
+                          <span>Impuestos / IVA</span>
+                          <span className="font-mono font-medium text-slate-900">{formatBs(montoImpuestoOrden)}</span>
+                        </div>
+                      )}
+                      {costoDisenoOrden > 0 && (
+                        <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
+                          <span className="flex items-center gap-1.5"><Scissors className="h-3.5 w-3.5 text-slate-400" /> Personalización / Diseño</span>
+                          <span className="font-mono font-medium text-slate-900">{formatBs(costoDisenoOrden)}</span>
+                        </div>
+                      )}
+                      {costoEnvio > 0 && (
+                        <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
+                          <span className="flex items-center gap-1.5"><Truck className="h-3.5 w-3.5 text-slate-400" /> Envío a domicilio</span>
+                          <span className="font-mono font-medium text-slate-900">{formatBs(costoEnvio)}</span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between rounded-lg border border-[var(--brand)]/30 bg-[var(--brand-light)] px-3 py-2.5 font-bold text-slate-900">
+                        <span className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-[var(--brand-dark)]">
+                          <Receipt className="h-4 w-4" /> Total orden
+                        </span>
+                        <span className="font-mono text-base font-black text-[var(--brand)]">{formatBs(totalConEnvio)}</span>
+                      </div>
+
+                      <div className="mt-2 rounded-lg bg-[var(--dark-bg)] px-3 py-2.5 text-white">
+                        <div className="flex justify-between font-bold">
+                          <span>Anticipo requerido (50%)</span>
+                          <span className="font-mono">{formatBs(montoAnticipo)}</span>
+                        </div>
+                        <div className="mt-1 flex justify-between text-slate-300">
+                          <span>Saldo pendiente a la entrega</span>
+                          <span className="font-mono font-medium">{formatBs(montoSaldo)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Vista previa / Datos de Pago (Interior del ticket) */}
+                    {metodoPago === "qr" && (
+                      <div className="border-t border-slate-100 px-6 py-4 text-center bg-slate-50/50">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={qrImagenSrc}
+                          alt="Código QR para pago del anticipo"
+                          className="mx-auto h-40 w-40 rounded-lg border border-slate-200 object-contain p-2 bg-white shadow-xs"
+                        />
+                        <p className="mt-2 text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center justify-center gap-1.5">
+                          <QrCode className="h-4 w-4 text-[var(--brand)]" />
+                          Escanea el QR y paga el anticipo
+                        </p>
+
+                        {comprobanteArchivo && (
+                          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-center">
+                            <CheckCircle2 className="h-5 w-5 text-emerald-600 mx-auto mb-1" />
+                            <p className="font-bold text-emerald-800">Comprobante recibido</p>
+                            <p className="mt-0.5 truncate text-emerald-600">{comprobanteArchivo.name}</p>
+                          </div>
+                        )}
+                      </div>
                     )}
-                  </p>
-                )}
-              </td>
-              <td className="py-1.5 text-right font-mono text-slate-600">{formatBs(fila.precioUnitario)}</td>
-              <td className="py-1.5 text-right font-mono font-bold text-slate-900">{formatBs(fila.total)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
 
-    {/* Sección: totales y anticipo */}
-    <div className="px-6 py-3 space-y-1.5 text-xs">
-      <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
-        <span className="flex items-center gap-1.5"><Scale className="h-3.5 w-3.5 text-slate-400" /> Subtotal</span>
-        <span className="font-mono font-medium text-slate-900">{formatBs(subtotalOrden)}</span>
-      </div>
-      {montoImpuestoOrden > 0 && (
-        <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
-          <span>Impuestos / IVA</span>
-          <span className="font-mono font-medium text-slate-900">{formatBs(montoImpuestoOrden)}</span>
-        </div>
-      )}
-      {costoEnvio > 0 && (
-        <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
-          <span className="flex items-center gap-1.5"><Truck className="h-3.5 w-3.5 text-slate-400" /> Envío a domicilio</span>
-          <span className="font-mono font-medium text-slate-900">{formatBs(costoEnvio)}</span>
-        </div>
-      )}
+                    {metodoPago === "efectivo" && (
+                      <div className="border-t border-slate-100 px-6 py-4 bg-slate-50/50">
+                        <p className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                          <Banknote className="h-4 w-4 text-[var(--brand)]" />
+                          Pago en efectivo
+                        </p>
+                        {!pedidoConfirmadoEfectivo ? (
+                          <p className="mt-1 text-xs text-slate-600">
+                            El anticipo de <span className="font-mono font-bold text-[var(--brand)]">{formatBs(montoAnticipo)}</span> se debe abonar directamente en el taller.
+                          </p>
+                        ) : (
+                          <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs">
+                            <div className="flex items-center gap-2 text-emerald-800 font-bold mb-1">
+                              <MapPin className="h-4 w-4 text-emerald-600" />
+                              Paga tu anticipo en esta ubicación
+                            </div>
+                            <p className="font-bold text-slate-900">{empresaNombre}</p>
+                            <p className="mt-0.5 text-slate-700">{direccionLocal}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-      <div className="flex items-center justify-between rounded-lg border border-[var(--brand)]/30 bg-[var(--brand-light)] px-3 py-2.5 font-bold text-slate-900">
-        <span className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-[var(--brand-dark)]">
-          <Receipt className="h-4 w-4" /> Total orden
-        </span>
-        <span className="font-mono text-base font-black text-[var(--brand)]">{formatBs(totalConEnvio)}</span>
-      </div>
+                    {/* Sección: notas legales */}
+                    <div className="border-t-2 border-dashed border-slate-300 bg-slate-50/70 px-6 py-3">
+                      <ul className="space-y-1 text-[10.5px] leading-relaxed text-slate-500">
+                        {notasLegales.map((nota, idx) => (
+                          <li key={idx} className="flex gap-1.5">
+                            <span className="text-slate-300">•</span>
+                            <span>{nota}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
 
-      <div className="mt-2 rounded-lg bg-[var(--dark-bg)] px-3 py-2.5 text-white">
-        <div className="flex justify-between font-bold">
-          <span>Anticipo requerido (50%)</span>
-          <span className="font-mono">{formatBs(montoAnticipo)}</span>
-        </div>
-        <div className="mt-1 flex justify-between text-slate-300">
-          <span>Saldo pendiente a la entrega</span>
-          <span className="font-mono font-medium">{formatBs(montoSaldo)}</span>
-        </div>
-      </div>
-    </div>
+                    {/* Código de barras decorativo */}
+                    <div className="flex flex-col items-center gap-1 px-6 pb-5 pt-1">
+                      <div
+                        className="h-8 w-full max-w-xs"
+                        style={{
+                          backgroundImage:
+                            "repeating-linear-gradient(90deg, #0f172a 0px, #0f172a 2px, transparent 2px, transparent 4px, #0f172a 4px, #0f172a 5px, transparent 5px, transparent 9px)",
+                        }}
+                      />
+                      <p className="font-mono text-[10px] tracking-[0.3em] text-slate-400">{codigoPedido}</p>
+                    </div>
+                  </div>
 
-    {/* Vista previa / Datos de Pago (Interior del ticket) */}
-    {metodoPago === "qr" && (
-      <div className="border-t border-slate-100 px-6 py-4 text-center bg-slate-50/50">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={qrImagenSrc}
-          alt="Código QR para pago del anticipo"
-          className="mx-auto h-40 w-40 rounded-lg border border-slate-200 object-contain p-2 bg-white shadow-xs"
-        />
-        <p className="mt-2 text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center justify-center gap-1.5">
-          <QrCode className="h-4 w-4 text-[var(--brand)]" />
-          Escanea el QR y paga el anticipo
-        </p>
+                  {/* ===== ACCIONES DE PAGO (FUERA DEL TICKET, ALINEADAS A LA DERECHA) ===== */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={handleComprobanteChange}
+                  />
 
-        {comprobanteArchivo && (
-          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-center">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 mx-auto mb-1" />
-            <p className="font-bold text-emerald-800">Comprobante recibido</p>
-            <p className="mt-0.5 truncate text-emerald-600">{comprobanteArchivo.name}</p>
-          </div>
-        )}
-      </div>
-    )}
+                  <div className="flex justify-end gap-3 pt-2">
+                    {metodoPago === "qr" && (
+                      <button
+                        type="button"
+                        onClick={handleSeleccionarComprobante}
+                        className="flex h-11 w-52 items-center justify-center gap-2 rounded-xl bg-[var(--brand)] px-4 text-xs font-bold uppercase tracking-wider text-white shadow-xs transition hover:bg-[var(--brand-dark)]"
+                      >
+                        {comprobanteArchivo ? (
+                          <>
+                            <RefreshCw className="h-4 w-4" />
+                            Reemplazar
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4" />
+                            Subir comprobante
+                          </>
+                        )}
+                      </button>
+                    )}
 
-    {metodoPago === "efectivo" && (
-      <div className="border-t border-slate-100 px-6 py-4 bg-slate-50/50">
-        <p className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-          <Banknote className="h-4 w-4 text-[var(--brand)]" />
-          Pago en efectivo
-        </p>
-        {!pedidoConfirmadoEfectivo ? (
-          <p className="mt-1 text-xs text-slate-600">
-            El anticipo de <span className="font-mono font-bold text-[var(--brand)]">{formatBs(montoAnticipo)}</span> se debe abonar directamente en el taller.
-          </p>
-        ) : (
-          <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs">
-            <div className="flex items-center gap-2 text-emerald-800 font-bold mb-1">
-              <MapPin className="h-4 w-4 text-emerald-600" />
-              Paga tu anticipo en esta ubicación
-            </div>
-            <p className="font-bold text-slate-900">{empresaNombre}</p>
-            <p className="mt-0.5 text-slate-700">{direccionLocal}</p>
-          </div>
-        )}
-      </div>
-    )}
+                    {metodoPago === "efectivo" && !pedidoConfirmadoEfectivo && (
+                      <button
+                        type="button"
+                        onClick={handleConfirmarEfectivo}
+                        className="flex h-11 w-52 items-center justify-center gap-2 rounded-xl bg-[var(--brand)] px-4 text-xs font-bold uppercase tracking-wider text-white shadow-xs transition hover:bg-[var(--brand-dark)]"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Confirmar pedido
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {/* ===== FIN TICKET ===== */}
 
-    {/* Sección: notas legales */}
-    <div className="border-t-2 border-dashed border-slate-300 bg-slate-50/70 px-6 py-3">
-      <ul className="space-y-1 text-[10.5px] leading-relaxed text-slate-500">
-        {notasLegales.map((nota, idx) => (
-          <li key={idx} className="flex gap-1.5">
-            <span className="text-slate-300">•</span>
-            <span>{nota}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-
-    {/* Código de barras decorativo */}
-    <div className="flex flex-col items-center gap-1 px-6 pb-5 pt-1">
-      <div
-        className="h-8 w-full max-w-xs"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(90deg, #0f172a 0px, #0f172a 2px, transparent 2px, transparent 4px, #0f172a 4px, #0f172a 5px, transparent 5px, transparent 9px)",
-        }}
-      />
-      <p className="font-mono text-[10px] tracking-[0.3em] text-slate-400">{codigoPedido}</p>
-    </div>
-  </div>
-
-  {/* ===== ACCIONES DE PAGO (FUERA DEL TICKET, ALINEADAS A LA DERECHA) ===== */}
-  <input
-    ref={fileInputRef}
-    type="file"
-    accept="image/*,application/pdf"
-    className="hidden"
-    onChange={handleComprobanteChange}
-  />
-
-  <div className="flex justify-end gap-3 pt-2">
-    {metodoPago === "qr" && (
-      <button
-        type="button"
-        onClick={handleSeleccionarComprobante}
-        className="flex h-11 w-52 items-center justify-center gap-2 rounded-xl bg-[var(--brand)] px-4 text-xs font-bold uppercase tracking-wider text-white shadow-xs transition hover:bg-[var(--brand-dark)]"
-      >
-        {comprobanteArchivo ? (
-          <>
-            <RefreshCw className="h-4 w-4" />
-            Reemplazar
-          </>
-        ) : (
-          <>
-            <Upload className="h-4 w-4" />
-            Subir comprobante
-          </>
-        )}
-      </button>
-    )}
-
-    {metodoPago === "efectivo" && !pedidoConfirmadoEfectivo && (
-      <button
-        type="button"
-        onClick={handleConfirmarEfectivo}
-        className="flex h-11 w-52 items-center justify-center gap-2 rounded-xl bg-[var(--brand)] px-4 text-xs font-bold uppercase tracking-wider text-white shadow-xs transition hover:bg-[var(--brand-dark)]"
-      >
-        <CheckCircle2 className="h-4 w-4" />
-        Confirmar pedido
-      </button>
-    )}
-  </div>
-</div>
-{/* ===== FIN TICKET ===== */}
-
-                
               </div>
             )}
           </div>
