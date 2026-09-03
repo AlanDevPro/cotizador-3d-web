@@ -320,7 +320,7 @@ export function VoucherPublico({
   const subtotalVista = filasVista.reduce((acc, f) => acc + f.total, 0);
   const montoImpuestoVista = esGeneral ? cotizacion.monto_impuesto || 0 : 0;
   const costoDisenoVista = esGeneral ? cotizacion.costo_diseno_total || 0 : 0;
-  const totalVista = subtotalVista + montoImpuestoVista;
+  const totalVista = subtotalVista + montoImpuestoVista + costoDisenoVista;
 
   // El comprobante SIEMPRE muestra el pedido completo (todas las piezas),
   // sin importar qué pestaña (General / Pieza 1 / Pieza 2...) esté activa.
