@@ -13,6 +13,7 @@ export interface CrearPedidoDesdeCotizacionDTO {
   cotizacionId: string;
   empresaId: string;
   clienteId?: string | null;
+  envioTipo?: TipoEntrega | string | null;
   creadoPor?: string | null;
   piezaDescripcion: string;
   pagoTotal: number;

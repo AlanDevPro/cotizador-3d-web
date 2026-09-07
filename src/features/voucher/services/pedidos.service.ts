@@ -24,19 +24,66 @@ const CHECKLIST_DEFAULT_LABELS = [
 ];
 
 // ==========================================
-// Creación
+// Creación (Corregida de Forma Profesional)
 // ==========================================
 
 export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacionDTO) {
+  let finalClienteId = dto.clienteId ?? null;
+
+  // 1. Si no viene clienteId en el DTO, consultamos la cotización
+  if (!finalClienteId) {
+    const { data: cotizacion, error: errorCotizacion } = await supabase
+      .from("cotizaciones")
+      .select("id, empresa_id, cliente_id, cliente_nombre, cliente_contacto")
+      .eq("id", dto.cotizacionId)
+      .single();
+
+    if (errorCotizacion) {
+      throw new Error(`Error al verificar la cotización: ${errorCotizacion.message}`);
+    }
+
+    // Usamos el cliente_id de la cotización si existe
+    finalClienteId = cotizacion.cliente_id;
+
+    // 2. Si la cotización tampoco tenía cliente_id vinculante, creamos un cliente implícito
+    if (!finalClienteId) {
+      const { data: nuevoCliente, error: errorNuevoCliente } = await supabase
+        .from("clientes")
+        .insert({
+          empresa_id: dto.empresaId || cotizacion.empresa_id,
+          nombre: cotizacion.cliente_nombre || "Cliente Web",
+          telefono: cotizacion.cliente_contacto || null,
+        })
+        .select("id")
+        .single();
+
+      if (errorNuevoCliente || !nuevoCliente) {
+        throw new Error(
+          `No se pudo autogenerar el cliente para el pedido: ${errorNuevoCliente?.message}`
+        );
+      }
+
+      finalClienteId = nuevoCliente.id;
+
+      // Actualizamos la cotización con el nuevo ID de cliente para mantener consistencia
+      await supabase
+        .from("cotizaciones")
+        .update({ cliente_id: finalClienteId })
+        .eq("id", dto.cotizacionId);
+    }
+  }
+
+  // 3. Crear el pedido garantizando envio_tipo válido y cliente_id no nulo
   const { data: pedido, error: errorPedido } = await supabase
     .from("pedidos")
     .insert({
       cotizacion_id: dto.cotizacionId,
       empresa_id: dto.empresaId,
-      cliente_id: dto.clienteId ?? null,
+      cliente_id: finalClienteId,
       creado_por: dto.creadoPor ?? null,
       pieza_descripcion: dto.piezaDescripcion,
       estado: "pendiente",
+      envio_tipo: dto.envioTipo ?? "recoger", // 👈 Garantiza "recoger" o "domicilio"
       pago_total: dto.pagoTotal,
       pago_anticipo_pct: dto.pagoAnticipoPct ?? 50,
       pago_monto_cobrado: 0,
@@ -45,10 +92,7 @@ export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacio
     .select()
     .single();
 
-  if (errorPedido) {
-    throw new Error(`No se pudo registrar el pedido: ${errorPedido.message}`);
-  }
-
+  // Registros de eventos, checklist y cambio de estado de cotización
   const { error: errorEvento } = await supabase.from("pedido_eventos").insert({
     pedido_id: pedido.id,
     texto: "Pedido aceptado por el cliente desde el comprobante/voucher web.",
@@ -65,11 +109,11 @@ export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacio
   );
   if (errorChecklist) console.warn("⚠️ No se pudo crear el checklist del pedido:", errorChecklist);
 
-  const { error: errorCotizacion } = await supabase
+  const { error: errorCotizState } = await supabase
     .from("cotizaciones")
     .update({ estado: "aceptada" })
     .eq("id", dto.cotizacionId);
-  if (errorCotizacion) console.warn("⚠️ No se pudo actualizar estado de cotización:", errorCotizacion);
+  if (errorCotizState) console.warn("⚠️ No se pudo actualizar estado de cotización:", errorCotizState);
 
   return pedido;
 }
