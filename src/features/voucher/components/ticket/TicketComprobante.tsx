@@ -14,14 +14,16 @@ import { TicketCodigoBarras } from "./TicketCodigoBarras";
 import { TicketAcciones } from "./TicketAcciones";
 
 export function TicketComprobante(props: TicketComprobanteProps) {
-  // Conversión segura de fecha si viene como string
   const fechaObj =
     typeof props.fechaEmision === "string"
       ? new Date(props.fechaEmision)
       : props.fechaEmision ?? new Date();
 
-  // Nombre seguro de la empresa con fallback
   const nombreEmpresaSeguro = props.empresaNombre ?? props.empresa?.nombre ?? "EMPRESA";
+
+  // Una vez verificado el pago, el pedido queda "cerrado" para el cliente:
+  // no puede cambiar opciones ni volver a subir/confirmar nada.
+  const pagoVerificado = Boolean(props.verificado);
 
   return (
     <div className="space-y-4">
@@ -30,14 +32,17 @@ export function TicketComprobante(props: TicketComprobanteProps) {
           <Ticket className="h-4 w-4 text-[var(--brand)]" />
           3. Tu comprobante de pedido
         </p>
-        <button
-          type="button"
-          onClick={props.onCambiarOpciones}
-          className="flex items-center gap-1 text-xs font-semibold text-[var(--brand)] hover:underline"
-        >
-          <RefreshCw className="h-3 w-3" />
-          Cambiar opciones
-        </button>
+
+        {!pagoVerificado && (
+          <button
+            type="button"
+            onClick={props.onCambiarOpciones}
+            className="flex items-center gap-1 text-xs font-semibold text-[var(--brand)] hover:underline"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Cambiar opciones
+          </button>
+        )}
       </div>
 
       <div className="relative mx-auto max-w-md space-y-4">
@@ -63,11 +68,12 @@ export function TicketComprobante(props: TicketComprobanteProps) {
 
           <TicketDetalleTrabajo filas={props.filasComprobante} />
 
+          {/* Se remueve montoImpuestoOrden y totalConEnvio para alinearse a la nueva interfaz sin IVA */}
           <TicketTotalesAnticipo
-            subtotalOrden={props.subtotalOrden}
-            montoImpuestoOrden={props.montoImpuestoOrden}
+            metodoEnvio={props.tipoEntrega ?? undefined}
             costoEnvio={props.costoEnvio}
-            totalConEnvio={props.totalConEnvio}
+            costoDiseno={props.costoDiseno}
+            subtotalOrden={props.subtotalOrden}
             montoAnticipo={props.montoAnticipo}
             montoSaldo={props.montoSaldo}
           />
@@ -76,11 +82,13 @@ export function TicketComprobante(props: TicketComprobanteProps) {
             visible={props.metodoPago === "qr"}
             qrImagenSrc={props.qrImagenSrc ?? ""}
             comprobanteArchivo={props.comprobanteArchivo}
+            verificado={pagoVerificado}
           />
 
           <TicketPagoEfectivo
             visible={props.metodoPago === "efectivo"}
             pedidoConfirmadoEfectivo={props.pedidoConfirmadoEfectivo}
+            verificado={pagoVerificado}
             montoAnticipo={props.montoAnticipo}
             empresaNombre={nombreEmpresaSeguro}
             direccionLocal={props.direccionLocal ?? ""}
@@ -90,15 +98,19 @@ export function TicketComprobante(props: TicketComprobanteProps) {
           <TicketCodigoBarras codigoPedido={props.codigoPedido ?? "S/N"} />
         </div>
 
-        <TicketAcciones
-          metodoPago={props.metodoPago}
-          comprobanteArchivo={props.comprobanteArchivo}
-          pedidoConfirmadoEfectivo={props.pedidoConfirmadoEfectivo}
-          fileInputRef={props.fileInputRef}
-          onComprobanteChange={props.onComprobanteChange}
-          onSeleccionarComprobante={props.onSeleccionarComprobante}
-          onConfirmarEfectivo={props.onConfirmarEfectivo}
-        />
+        {/* Con el pago verificado, el cliente solo puede ver el comprobante.
+            No debe poder subir archivos ni confirmar efectivo de nuevo. */}
+        {!pagoVerificado && (
+          <TicketAcciones
+            metodoPago={props.metodoPago}
+            comprobanteArchivo={props.comprobanteArchivo}
+            pedidoConfirmadoEfectivo={props.pedidoConfirmadoEfectivo}
+            fileInputRef={props.fileInputRef}
+            onComprobanteChange={props.onComprobanteChange}
+            onSeleccionarComprobante={props.onSeleccionarComprobante}
+            onConfirmarEfectivo={props.onConfirmarEfectivo}
+          />
+        )}
       </div>
     </div>
   );

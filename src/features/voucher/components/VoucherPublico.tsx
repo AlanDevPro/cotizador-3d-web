@@ -1,7 +1,8 @@
+//src/features/voucher/components/VoucherPublico.tsx
 "use client";
 
 import { useMemo } from "react";
-import type { VoucherPublicoProps } from "../types/voucher.types";
+import type { VoucherPublicoProps, Tema } from "../types/voucher.types";
 import { TEMAS } from "../constants/voucherConstants";
 import { useVoucherFlujo } from "../hooks/useVoucherFlujo";
 import { useVoucherCotizacion } from "../hooks/useVoucherCotizacion";
@@ -15,6 +16,7 @@ import { VoucherPoliticas } from "./VoucherPoliticas";
 import { VoucherAccionesIniciales } from "./VoucherAccionesIniciales";
 import { VoucherSeleccionOpciones } from "./VoucherSeleccionOpciones";
 import { TicketComprobante } from "./ticket/TicketComprobante";
+import { VoucherUbicacionLocal } from "./VoucherUbicacionLocal";
 import { VoucherFooter } from "./VoucherFooter";
 
 export function VoucherPublico({
@@ -28,13 +30,17 @@ export function VoucherPublico({
   numeroPedido,
   qrPagoUri,
   ubicacionLocal,
+  ubicacionMapsUrl,
   onSubirComprobante,
   onConfirmarPedidoEfectivo,
   whatsappUrl,
   tiktokUrl,
+  instagramUrl,
+  facebookUrl,
 }: VoucherPublicoProps) {
   const flujo = useVoucherFlujo({
-    onAceptarPedido,
+    cotizacion,
+    onAceptarPedidoSuccess: onAceptarPedido,
     onSubirComprobante,
     onConfirmarPedidoEfectivo,
   });
@@ -46,38 +52,46 @@ export function VoucherPublico({
     numeroPedido,
     clienteNombre,
     ubicacionLocal,
+    ubicacionMapsUrl,
     qrPagoUri,
     fechaEmision: flujo.fechaEmision,
   });
 
-  // Mapeo unificado garantizando la extracción de filamento (material, color, colorHex)
   const filasMapeadas = useMemo(() => {
     return mapearPiezasAFilasVoucher(cotizacion.piezas ?? []);
   }, [cotizacion.piezas]);
 
-  const estiloTema = (TEMAS[flujo.tema] ?? TEMAS.rosa) as React.CSSProperties;
-
-  // Determinar la pieza seleccionada para la Hero Card según el tab activo
+  const temaClave = (flujo.tema as Tema) || "rosa";
+  const estiloTema = (TEMAS[temaClave] ?? TEMAS.rosa) as React.CSSProperties;
   const piezaSeleccionadaId =
-    flujo.tabActivo !== "todas" ? flujo.tabActivo : null;
+    flujo.tabActivo !== "general" ? flujo.tabActivo : null;
+
+  // Una vez que el pago fue verificado por el admin, el pedido queda "cerrado"
+  // para el cliente: ya no necesita ver dónde pagar/recoger, porque ya pagó.
+  const mostrarUbicacionLocal =
+    flujo.metodoPago === "efectivo" &&
+    flujo.pedidoConfirmadoEfectivo &&
+    !flujo.comprobanteVerificado;
 
   return (
     <div
-      className="min-h-screen bg-slate-50 px-4 py-8 antialiased text-slate-800"
+      className="min-h-screen bg-slate-50 px-4 py-8 text-slate-800 antialiased"
       style={estiloTema}
     >
       <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        {/* Cabecera del Voucher */}
         <VoucherHeader
           empresaNombre={datos.empresaNombre}
           empresa={datos.empresa ?? undefined}
           voucherData={datos.voucherData ?? undefined}
           creadoEn={cotizacion.creado_en}
-          tema={flujo.tema}
+          tema={temaClave}
           onAlternarTema={flujo.alternarTema}
         />
 
         <div className="mt-4 h-1 w-full rounded-full bg-[var(--brand)]" />
 
+        {/* Pestañas de Piezas */}
         <VoucherTabsPiezas
           tabs={datos.tabs}
           tabActivo={flujo.tabActivo}
@@ -85,12 +99,13 @@ export function VoucherPublico({
           visible={(cotizacion.piezas?.length ?? 0) > 1}
         />
 
-        {/* Invocación adaptada al nuevo contrato de props de VoucherHeroCard */}
+        {/* Tarjeta Destacada */}
         <VoucherHeroCard
           cotizacion={cotizacion}
           piezaSeleccionadaId={piezaSeleccionadaId}
         />
 
+        {/* Tabla Desglose */}
         <VoucherTablaResumen
           filas={datos.filasVista ?? filasMapeadas}
           costoDisenoTotal={cotizacion.costo_diseno_total}
@@ -99,69 +114,89 @@ export function VoucherPublico({
           total={datos.totalVista}
         />
 
+        {/* Políticas y Garantía */}
         <VoucherPoliticas politicas={datos.politicas} />
 
+        {/* Botones de Acción Inicial */}
         {!flujo.pedidoAceptado && (
           <VoucherAccionesIniciales
             onCancelar={onCancelarPedido}
             onAceptar={flujo.handleAceptarPedido}
+            loading={flujo.isCreatingPedido}
           />
         )}
 
+        {/* Flujo de Confirmación y Ticket */}
         {flujo.pedidoAceptado && (
           <div className="mt-6 space-y-4">
             <VoucherSeleccionOpciones
               visible={!flujo.seleccionCompleta}
               tipoEntrega={flujo.tipoEntrega}
               metodoPago={flujo.metodoPago}
-              onSeleccionarEntrega={flujo.setTipoEntrega}
-              onSeleccionarPago={flujo.setMetodoPago}
+              onSeleccionarEntrega={flujo.handleSeleccionarEntrega}
+              onSeleccionarPago={flujo.handleSeleccionarPago}
             />
 
             {flujo.seleccionCompleta && (
-              <TicketComprobante
-                empresa={datos.empresa ?? undefined}
-                empresaNombre={datos.empresaNombre}
-                voucherData={datos.voucherData ?? undefined}
-                codigoPedido={datos.codigoPedido}
-                fechaEmision={flujo.fechaEmision}
-                atendidoPor={atendidoPor}
-                nombreCliente={datos.nombreClienteMostrado}
-                clienteDocumento={clienteDocumento}
-                clienteTelefono={clienteTelefono}
-                tipoEntrega={flujo.tipoEntrega}
-                filasComprobante={datos.filasComprobante ?? filasMapeadas}
-                subtotalOrden={datos.subtotalOrden}
-                montoImpuestoOrden={datos.montoImpuestoOrden}
-                costoEnvio={datos.costoEnvio}
-                totalConEnvio={datos.totalConEnvio}
-                montoAnticipo={datos.montoAnticipo}
-                montoSaldo={datos.montoSaldo}
-                metodoPago={flujo.metodoPago}
-                qrImagenSrc={datos.qrImagenSrc}
-                comprobanteArchivo={flujo.comprobanteArchivo}
-                pedidoConfirmadoEfectivo={flujo.pedidoConfirmadoEfectivo}
-                direccionLocal={datos.direccionLocal}
-                notasLegales={datos.notasLegales}
-                fileInputRef={
-                  flujo.fileInputRef as React.RefObject<HTMLInputElement>
-                }
-                onSeleccionarComprobante={flujo.handleSeleccionarComprobante}
-                onComprobanteChange={flujo.handleComprobanteChange}
-                onConfirmarEfectivo={flujo.handleConfirmarEfectivo}
-                onCambiarOpciones={flujo.handleCambiarOpciones}
-              />
+              <>
+                <TicketComprobante
+                  empresa={datos.empresa ?? undefined}
+                  empresaNombre={datos.empresaNombre}
+                  voucherData={datos.voucherData ?? undefined}
+                  codigoPedido={datos.codigoPedido}
+                  fechaEmision={flujo.fechaEmision}
+                  atendidoPor={atendidoPor}
+                  nombreCliente={datos.nombreClienteMostrado}
+                  clienteDocumento={clienteDocumento}
+                  clienteTelefono={clienteTelefono}
+                  tipoEntrega={flujo.tipoEntrega}
+                  filasComprobante={datos.filasComprobante ?? filasMapeadas}
+                  subtotalOrden={datos.subtotalOrden}
+                  montoImpuestoOrden={datos.montoImpuestoOrden}
+                  costoEnvio={datos.costoEnvio}
+                  costoDiseno={cotizacion.costo_diseno_total}
+                  totalConEnvio={datos.totalConEnvio}
+                  montoAnticipo={datos.montoAnticipo}
+                  montoSaldo={datos.montoSaldo}
+                  metodoPago={flujo.metodoPago}
+                  verificado={flujo.comprobanteVerificado}
+                  qrImagenSrc={datos.qrImagenSrc}
+                  comprobanteArchivo={flujo.comprobanteArchivo}
+                  pedidoConfirmadoEfectivo={flujo.pedidoConfirmadoEfectivo}
+                  direccionLocal={datos.direccionLocal}
+                  notasLegales={datos.notasLegales}
+                  fileInputRef={
+                    flujo.fileInputRef as React.RefObject<HTMLInputElement>
+                  }
+                  onSeleccionarComprobante={flujo.handleSeleccionarComprobante}
+                  onComprobanteChange={flujo.handleComprobanteChange}
+                  onConfirmarEfectivo={flujo.handleConfirmarEfectivo}
+                  onCambiarOpciones={flujo.handleCambiarOpciones}
+                />
+
+                {/* Punto de Pago y Recojo: solo mientras el pago en efectivo
+                    sigue pendiente de verificación. Una vez verificado, se oculta. */}
+                {mostrarUbicacionLocal && (
+                  <VoucherUbicacionLocal
+                    direccion={datos.direccionLocal}
+                    ubicacionUrl={datos.direccionMapsUrl ?? undefined}
+                  />
+                )}
+              </>
             )}
           </div>
         )}
 
+        {/* Pie de Página */}
         <VoucherFooter
           footerNote={datos.voucherData?.footerNote}
           sitioWeb={datos.empresa?.sitio_web}
-          whatsappUrl={whatsappUrl ?? datos.empresa?.telefono}
+          whatsappUrl={
+            whatsappUrl ?? datos.empresa?.whatsapp_url ?? datos.empresa?.telefono
+          }
           tiktokUrl={tiktokUrl ?? datos.empresa?.tiktok_url}
-          facebookUrl={datos.empresa?.razon_social}
-          instagramUrl={datos.empresa?.instagram_url}
+          facebookUrl={facebookUrl ?? datos.empresa?.facebook_url}
+          instagramUrl={instagramUrl ?? datos.empresa?.instagram_url}
         />
       </div>
     </div>

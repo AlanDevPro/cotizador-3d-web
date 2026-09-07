@@ -1,11 +1,9 @@
-// src/features/voucher/components/ticket/TicketPagoEfectivo.tsx
-
-import { Banknote, MapPin } from "lucide-react";
-import { formatBs } from "../../utils/voucherFormatters";
+import { Banknote, CheckCircle2, Clock, MapPin } from "lucide-react";
 
 interface TicketPagoEfectivoProps {
   visible: boolean;
   pedidoConfirmadoEfectivo: boolean;
+  verificado: boolean;
   montoAnticipo: number;
   empresaNombre: string;
   direccionLocal: string;
@@ -14,6 +12,7 @@ interface TicketPagoEfectivoProps {
 export function TicketPagoEfectivo({
   visible,
   pedidoConfirmadoEfectivo,
+  verificado,
   montoAnticipo,
   empresaNombre,
   direccionLocal,
@@ -21,23 +20,37 @@ export function TicketPagoEfectivo({
   if (!visible) return null;
 
   return (
-    <div className="border-t border-slate-100 px-6 py-4 bg-slate-50/50">
-      <p className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+    <div className="border-t border-dashed border-slate-200 px-5 py-4">
+      <p className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-900">
         <Banknote className="h-4 w-4 text-[var(--brand)]" />
         Pago en efectivo
       </p>
-      {!pedidoConfirmadoEfectivo ? (
-        <p className="mt-1 text-xs text-slate-600">
-          El anticipo de <span className="font-mono font-bold text-[var(--brand)]">{formatBs(montoAnticipo)}</span> se debe abonar directamente en el taller.
+
+      {verificado ? (
+        <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-emerald-700">
+          <CheckCircle2 className="h-5 w-5 shrink-0" />
+          <p className="text-sm font-semibold">
+            Pago ya confirmado con éxito. No necesitas hacer nada más.
+          </p>
+        </div>
+      ) : !pedidoConfirmadoEfectivo ? (
+        <p className="text-xs text-slate-500">
+          Confirma tu pedido y acércate a <strong>{empresaNombre}</strong> para pagar el
+          anticipo de {montoAnticipo.toFixed(2)} Bs en efectivo.
         </p>
       ) : (
-        <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs">
-          <div className="flex items-center gap-2 text-emerald-800 font-bold mb-1">
-            <MapPin className="h-4 w-4 text-emerald-600" />
-            Paga tu anticipo en esta ubicación
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-amber-700">
+            <Clock className="h-5 w-5 shrink-0 animate-pulse" />
+            <p className="text-sm font-semibold">
+              Pedido confirmado. Aún no verificamos tu pago; acércate al local a cancelar
+              el anticipo.
+            </p>
           </div>
-          <p className="font-bold text-slate-900">{empresaNombre}</p>
-          <p className="mt-0.5 text-slate-700">{direccionLocal}</p>
+          <p className="flex items-center gap-1.5 text-xs text-slate-500">
+            <MapPin className="h-3.5 w-3.5" />
+            {direccionLocal}
+          </p>
         </div>
       )}
     </div>

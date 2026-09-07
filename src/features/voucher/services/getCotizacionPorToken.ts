@@ -1,3 +1,4 @@
+//src/features/voucher/services/getCotizacionPorToken.ts
 import { createClient } from "@supabase/supabase-js";
 import type {
   CotizacionPublica,
@@ -51,6 +52,7 @@ interface DBEmpresa {
   instagram?: string | null;
   facebook?: string | null;
   ciudad?: string | null;
+  ubicacion_url?: string | null;
 }
 
 function mapearPiezaItem(
@@ -150,7 +152,8 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
           direccion_fiscal,
           instagram,
           facebook,
-          ciudad
+          ciudad,
+          ubicacion_url
         ),
         cotizacion_items (
           id,
@@ -221,6 +224,7 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
           ciudad: rawEmpresa.ciudad || null,
           instagram_url: rawEmpresa.instagram || null,
           facebook_url: rawEmpresa.facebook || null,
+          ubicacion_url: rawEmpresa.ubicacion_url || null,
         }
       : null;
 

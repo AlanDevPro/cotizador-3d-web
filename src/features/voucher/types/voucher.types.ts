@@ -5,6 +5,56 @@ export type MetodoPago = "efectivo" | "qr";
 export type Tema = "rosa" | "morado";
 export type TabId = "general" | string;
 
+// ==========================================
+// DTOs & Interfaces de Pago / Pedido
+// ==========================================
+
+export interface CrearPedidoDesdeCotizacionDTO {
+  cotizacionId: string;
+  empresaId: string;
+  clienteId?: string | null;
+  creadoPor?: string | null;
+  piezaDescripcion: string;
+  pagoTotal: number;
+  pagoAnticipoPct?: number;
+}
+
+export interface ActualizarOpcionesPedidoDTO {
+  envioTipo?: TipoEntrega | string | null;
+  envioCosto?: number | null;
+  pagoTotal?: number | null;
+}
+
+export interface RegistrarPagoPedidoDTO {
+  tipo: "anticipo" | "saldo" | "total";
+  metodo: "efectivo" | "qr";
+  comprobanteUrl?: string | null;
+  montoEsperado?: number; // solo informativo (evento), nunca se persiste en pedido_pagos.monto
+}
+
+export interface PedidoExistente {
+  id: string;
+  estado: string;
+  envio_tipo: string | null;
+  envio_costo: number | null;
+  pago_total: number | null;
+  pago_monto_cobrado: number | null;
+  pago_estado: string | null;
+}
+
+export interface UltimoPago {
+  id: string;
+  metodo: "efectivo" | "qr";
+  tipo: string;
+  monto: number;
+  comprobante_url: string | null;
+  verificado: boolean;
+}
+
+// ==========================================
+// Dominios Principales (Filamento, Pieza, Empresa)
+// ==========================================
+
 export interface FilamentoInfo {
   id: string;
   material: string;
@@ -59,6 +109,7 @@ export interface EmpresaInfo {
   tiktok_url?: string | null;
   instagram_url?: string | null;
   facebook_url?: string | null;
+  ubicacion_url?: string | null;
 }
 
 export interface VoucherPolicy {
@@ -115,6 +166,10 @@ export interface FilaVoucher {
   detalleTecnico?: string | null;
 }
 
+// ==========================================
+// Props de Componentes
+// ==========================================
+
 export interface VoucherPublicoProps {
   cotizacion: CotizacionPublica;
   onAceptarPedido?: () => void;
@@ -131,8 +186,7 @@ export interface VoucherPublicoProps {
   onConfirmarPedidoEfectivo?: () => void;
   instagramUrl?: string;
   whatsappUrl?: string;
-  facebookUrl?: string;
-  tiktokUrl?: string;
+  facebookUrl?: string;  tiktokUrl?: string;
 }
 
 export interface VoucherTablaResumenProps {
@@ -157,23 +211,25 @@ export interface TicketComprobanteProps {
   empresaNombre?: string | null;
   voucherData?: VoucherData | null;
   codigoPedido?: string | null;
-  fechaEmision?: Date | string; // Permite tanto Date como string
+  fechaEmision?: Date | string;
   atendidoPor?: string;
   nombreCliente?: string | null;
   clienteDocumento?: string;
   clienteTelefono?: string;
-  tipoEntrega: TipoEntrega | null; // Permite null si aún no se seleccionó
+  tipoEntrega: TipoEntrega | null;
   filasComprobante: FilaVoucher[];
   subtotalOrden: number;
   montoImpuestoOrden: number;
   costoEnvio: number;
+  costoDiseno?: number | string;
   totalConEnvio: number;
   montoAnticipo: number;
   montoSaldo: number;
-  metodoPago: MetodoPago | null; // Permite null si aún no se seleccionó
+  metodoPago: MetodoPago | null;
   qrImagenSrc?: string | null;
   comprobanteArchivo: File | null;
   pedidoConfirmadoEfectivo: boolean;
+  verificado?: boolean; // Trazabilidad para la auditoría de pago
   direccionLocal?: string | null;
   notasLegales?: string[] | null;
   fileInputRef: RefObject<HTMLInputElement>;
