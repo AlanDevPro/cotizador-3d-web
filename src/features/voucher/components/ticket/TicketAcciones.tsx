@@ -1,5 +1,3 @@
-// src/features/voucher/components/ticket/TicketAcciones.tsx
-
 import { CheckCircle2, RefreshCw, Upload } from "lucide-react";
 import type { MetodoPago } from "../../types/voucher.types";
 
@@ -27,7 +25,7 @@ export function TicketAcciones({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,application/pdf"
+        accept="image/*"
         className="hidden"
         onChange={onComprobanteChange}
       />

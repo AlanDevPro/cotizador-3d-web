@@ -117,14 +117,7 @@ export function VoucherPublico({
         {/* Políticas y Garantía */}
         <VoucherPoliticas politicas={datos.politicas} />
 
-        {/* Botones de Acción Inicial */}
-        {!flujo.pedidoAceptado && (
-          <VoucherAccionesIniciales
-            onCancelar={onCancelarPedido}
-            onAceptar={flujo.handleAceptarPedido}
-            loading={flujo.isCreatingPedido}
-          />
-        )}
+        
 
         {/* Flujo de Confirmación y Ticket */}
         {flujo.pedidoAceptado && (

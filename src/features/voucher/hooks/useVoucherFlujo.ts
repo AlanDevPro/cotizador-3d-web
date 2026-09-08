@@ -5,7 +5,7 @@ import type {
   MetodoPago,
   CotizacionPublica,
   PiezaDetalle,
-  CrearPedidoDesdeCotizacionDTO, // <- Importado directamente desde el archivo de tipos
+  CrearPedidoDesdeCotizacionDTO,
 } from "../types/voucher.types";
 import { calcularTotalesPedido } from "../utils/calcularTotalesPedido";
 import {
@@ -44,7 +44,7 @@ export function useVoucherFlujo({
   const [comprobanteArchivo, setComprobanteArchivo] = useState<File | null>(null);
   const [pedidoConfirmadoEfectivo, setPedidoConfirmadoEfectivo] = useState<boolean>(false);
 
-  // Estado del último pago registrado (anticipo) — para mostrar mensaje de verificación
+  // Estado del último pago registrado (anticipo)
   const [pagoId, setPagoId] = useState<string | null>(null);
   const [comprobanteVerificado, setComprobanteVerificado] = useState<boolean>(false);
 
@@ -81,7 +81,7 @@ export function useVoucherFlujo({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cotizacion.id]);
 
-  // Escucha en tiempo real cuando el admin verifica el pago desde la app móvil
+  // Escucha en tiempo real cuando el admin verifica el pago desde la app móvil o web
   useEffect(() => {
     if (!pagoId) return;
 
@@ -177,13 +177,24 @@ export function useVoucherFlujo({
     fileInputRef.current?.click();
   };
 
-  // 4. Comprobante QR subido → bucket empresa-assets + registro de anticipo (monto 0)
+  // 4. Comprobante QR subido → bucket empresa-assets (Validación estricta de imágenes)
   const handleComprobanteChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validación de tipo de archivo (solo imágenes permitidas)
+    if (!file.type.startsWith("image/")) {
+      alert("Solo se permiten archivos de imagen (JPG, PNG, WEBP, etc.).");
+      if (e.target) e.target.value = "";
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     setComprobanteArchivo(file);
     onSubirComprobante?.(file);
+
+    // Reseteamos el input para permitir seleccionar el mismo archivo si fuese necesario reintentar
+    e.target.value = "";
 
     if (!pedidoId || !tipoEntrega) return;
 
@@ -209,7 +220,7 @@ export function useVoucherFlujo({
     }
   };
 
-  // 5. Confirmación de pago en efectivo (monto 0 hasta que pague en el local)
+  // 5. Confirmación de pago en efectivo
   const handleConfirmarEfectivo = async () => {
     if (!pedidoId || !tipoEntrega) return;
 
@@ -235,7 +246,7 @@ export function useVoucherFlujo({
     }
   };
 
-  // 6. "Cambiar opciones": anula el pago previo y reabre la selección
+  // 6. Cambiar opciones: anula el pago previo y reinicia los estados correspondientes
   const handleCambiarOpciones = async () => {
     if (pedidoId && (pedidoConfirmadoEfectivo || comprobanteArchivo)) {
       try {

@@ -83,7 +83,7 @@ export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacio
       creado_por: dto.creadoPor ?? null,
       pieza_descripcion: dto.piezaDescripcion,
       estado: "pendiente",
-      envio_tipo: dto.envioTipo ?? "recoger", // 👈 Garantiza "recoger" o "domicilio"
+      envio_tipo: dto.envioTipo ?? "recoger",
       pago_total: dto.pagoTotal,
       pago_anticipo_pct: dto.pagoAnticipoPct ?? 50,
       pago_monto_cobrado: 0,
@@ -300,12 +300,13 @@ export async function actualizarEstadoPagoPedidoService(pedidoId: string) {
 }
 
 // ==========================================
-// Subir comprobante de pago QR → bucket empresa-assets
+// Subir comprobante de pago QR → bucket empresa-assets (Ruta estática para reemplazo)
 // ==========================================
 
 export async function subirComprobantePagoService(pedidoId: string, file: File): Promise<string> {
   const extension = file.name.split(".").pop() || "jpg";
-  const path = `comprobantes-pago/${pedidoId}/comprobante-${Date.now()}.${extension}`;
+  // Usamos una ruta fija por pedido para que la subida reemplace el archivo anterior en el bucket
+  const path = `comprobantes-pago/${pedidoId}/comprobante-anticipo.${extension}`;
 
   const { error: errorUpload } = await supabase.storage
     .from("empresa-assets")
@@ -314,5 +315,7 @@ export async function subirComprobantePagoService(pedidoId: string, file: File):
   if (errorUpload) throw new Error(`No se pudo subir el comprobante: ${errorUpload.message}`);
 
   const { data } = supabase.storage.from("empresa-assets").getPublicUrl(path);
-  return data.publicUrl;
+  
+  // Agregar timestamp a la URL pública para forzar la actualización de cache en navegadores
+  return `${data.publicUrl}?t=${Date.now()}`;
 }
