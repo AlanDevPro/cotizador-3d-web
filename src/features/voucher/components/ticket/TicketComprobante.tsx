@@ -21,9 +21,17 @@ export function TicketComprobante(props: TicketComprobanteProps) {
 
   const nombreEmpresaSeguro = props.empresaNombre ?? props.empresa?.nombre ?? "EMPRESA";
 
-  // Una vez verificado el pago, el pedido queda "cerrado" para el cliente:
-  // no puede cambiar opciones ni volver a subir/confirmar nada.
   const pagoVerificado = Boolean(props.verificado);
+
+  // Recálculo preventivo a nivel de comprobante para consistencia global
+  const numPiezas = Number(props.subtotalOrden) || 0;
+  const numEnvio = Number(props.costoEnvio) || 0;
+  const numDiseno = Number(props.costoDiseno) || 0;
+  const totalCalculado = numPiezas + numEnvio + numDiseno;
+  
+  const porcentajeAnticipo = Number(50);
+  const anticipoCalculado = (totalCalculado * porcentajeAnticipo) / 100;
+  const saldoCalculado = totalCalculado - anticipoCalculado;
 
   return (
     <div className="space-y-4">
@@ -68,14 +76,14 @@ export function TicketComprobante(props: TicketComprobanteProps) {
 
           <TicketDetalleTrabajo filas={props.filasComprobante} />
 
-          {/* Se remueve montoImpuestoOrden y totalConEnvio para alinearse a la nueva interfaz sin IVA */}
           <TicketTotalesAnticipo
             metodoEnvio={props.tipoEntrega ?? undefined}
             costoEnvio={props.costoEnvio}
             costoDiseno={props.costoDiseno}
             subtotalOrden={props.subtotalOrden}
-            montoAnticipo={props.montoAnticipo}
-            montoSaldo={props.montoSaldo}
+            montoAnticipo={anticipoCalculado}
+            montoSaldo={saldoCalculado}
+            porcentajeAnticipo={porcentajeAnticipo}
           />
 
           <TicketPagoQR
@@ -89,7 +97,7 @@ export function TicketComprobante(props: TicketComprobanteProps) {
             visible={props.metodoPago === "efectivo"}
             pedidoConfirmadoEfectivo={props.pedidoConfirmadoEfectivo}
             verificado={pagoVerificado}
-            montoAnticipo={props.montoAnticipo}
+            montoAnticipo={anticipoCalculado}
             empresaNombre={nombreEmpresaSeguro}
             direccionLocal={props.direccionLocal ?? ""}
           />
@@ -98,8 +106,6 @@ export function TicketComprobante(props: TicketComprobanteProps) {
           <TicketCodigoBarras codigoPedido={props.codigoPedido ?? "S/N"} />
         </div>
 
-        {/* Con el pago verificado, el cliente solo puede ver el comprobante.
-            No debe poder subir archivos ni confirmar efectivo de nuevo. */}
         {!pagoVerificado && (
           <TicketAcciones
             metodoPago={props.metodoPago}

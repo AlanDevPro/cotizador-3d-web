@@ -30,7 +30,6 @@ const CHECKLIST_DEFAULT_LABELS = [
 export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacionDTO) {
   let finalClienteId = dto.clienteId ?? null;
 
-  // 1. Si no viene clienteId en el DTO, consultamos la cotización
   if (!finalClienteId) {
     const { data: cotizacion, error: errorCotizacion } = await supabase
       .from("cotizaciones")
@@ -42,10 +41,8 @@ export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacio
       throw new Error(`Error al verificar la cotización: ${errorCotizacion.message}`);
     }
 
-    // Usamos el cliente_id de la cotización si existe
     finalClienteId = cotizacion.cliente_id;
 
-    // 2. Si la cotización tampoco tenía cliente_id vinculante, creamos un cliente implícito
     if (!finalClienteId) {
       const { data: nuevoCliente, error: errorNuevoCliente } = await supabase
         .from("clientes")
@@ -65,7 +62,6 @@ export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacio
 
       finalClienteId = nuevoCliente.id;
 
-      // Actualizamos la cotización con el nuevo ID de cliente para mantener consistencia
       await supabase
         .from("cotizaciones")
         .update({ cliente_id: finalClienteId })
@@ -73,7 +69,6 @@ export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacio
     }
   }
 
-  // 3. Crear el pedido garantizando envio_tipo válido y cliente_id no nulo
   const { data: pedido, error: errorPedido } = await supabase
     .from("pedidos")
     .insert({
@@ -92,7 +87,10 @@ export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacio
     .select()
     .single();
 
-  // Registros de eventos, checklist y cambio de estado de cotización
+  if (errorPedido) {
+    throw new Error(`No se pudo crear el pedido: ${errorPedido.message}`);
+  }
+
   const { error: errorEvento } = await supabase.from("pedido_eventos").insert({
     pedido_id: pedido.id,
     texto: "Pedido aceptado por el cliente desde el comprobante/voucher web.",
@@ -190,28 +188,76 @@ export async function actualizarOpcionesPedidoService(
 }
 
 // ==========================================
-// Registrar pago (anticipo) — Se registra con monto esperado y verificado = false
+// Registrar / actualizar pago (anticipo) — UPSERT
+//
+// Regla de negocio: solo puede existir UN registro de tipo "anticipo" por
+// pedido. Si el cliente presiona "Subir comprobante", "Reemplazar" o
+// "Confirmar pedido" más de una vez (doble click, refresco de página, o
+// cambia de método de pago/entrega y vuelve a confirmar), se actualiza la
+// misma fila en vez de insertar una nueva.
 // ==========================================
 
 export async function registrarPagoPedidoService(pedidoId: string, dto: RegistrarPagoPedidoDTO) {
   const montoARegistrar = dto.montoEsperado ?? 0;
 
-  const { data: pago, error } = await supabase
+  // 1. Buscar si ya existe un anticipo para este pedido
+  const { data: pagoExistente, error: errorBuscar } = await supabase
     .from("pedido_pagos")
-    .insert({
-      pedido_id: pedidoId,
-      tipo: dto.tipo,
-      monto: montoARegistrar,
-      metodo: dto.metodo,
-      comprobante_url: dto.comprobanteUrl ?? null,
-      verificado: false,
-      fecha: new Date().toISOString(),
-    })
-    .select()
-    .single();
+    .select("id, verificado")
+    .eq("pedido_id", pedidoId)
+    .eq("tipo", dto.tipo)
+    .maybeSingle();
 
-  if (error) {
-    throw new Error(`No se pudo registrar el pago: ${error.message}`);
+  if (errorBuscar) {
+    throw new Error(`No se pudo verificar el pago existente: ${errorBuscar.message}`);
+  }
+
+  // 2. Si ya fue verificado por el administrador, el pedido queda cerrado:
+  // el cliente ya no puede modificarlo desde el voucher web.
+  if (pagoExistente?.verificado) {
+    throw new Error(
+      "Este pedido ya tiene un pago verificado y no puede modificarse desde aquí."
+    );
+  }
+
+  let pago;
+  const esActualizacion = Boolean(pagoExistente);
+
+  if (pagoExistente) {
+    // 3a. Ya existe -> actualizar la misma fila (nuevo método, nuevo comprobante, etc.)
+    const { data, error } = await supabase
+      .from("pedido_pagos")
+      .update({
+        metodo: dto.metodo,
+        monto: montoARegistrar,
+        comprobante_url: dto.comprobanteUrl ?? null,
+        verificado: false,
+        fecha: new Date().toISOString(),
+      })
+      .eq("id", pagoExistente.id)
+      .select()
+      .single();
+
+    if (error) throw new Error(`No se pudo actualizar el pago: ${error.message}`);
+    pago = data;
+  } else {
+    // 3b. No existe -> crear el primer registro de anticipo
+    const { data, error } = await supabase
+      .from("pedido_pagos")
+      .insert({
+        pedido_id: pedidoId,
+        tipo: dto.tipo,
+        monto: montoARegistrar,
+        metodo: dto.metodo,
+        comprobante_url: dto.comprobanteUrl ?? null,
+        verificado: false,
+        fecha: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`No se pudo registrar el pago: ${error.message}`);
+    pago = data;
   }
 
   const detalleEsperado = montoARegistrar > 0
@@ -220,7 +266,9 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
 
   await supabase.from("pedido_eventos").insert({
     pedido_id: pedidoId,
-    texto: `Anticipo registrado vía ${dto.metodo}.${detalleEsperado}`,
+    texto: esActualizacion
+      ? `Anticipo actualizado vía ${dto.metodo}.${detalleEsperado}`
+      : `Anticipo registrado vía ${dto.metodo}.${detalleEsperado}`,
   });
 
   await actualizarEstadoPagoPedidoService(pedidoId);
@@ -230,6 +278,10 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
 
 // ==========================================
 // Anular último pago
+// (se conserva por si se necesita en otro flujo administrativo, pero el
+// voucher web YA NO la llama al presionar "Cambiar opciones": ahora
+// simplemente se actualiza el mismo registro cuando el cliente vuelve a
+// confirmar)
 // ==========================================
 
 export async function anularUltimoPagoPedidoService(pedidoId: string) {
@@ -268,7 +320,7 @@ export async function actualizarEstadoPagoPedidoService(pedidoId: string) {
     .from("pedido_pagos")
     .select("monto, verificado")
     .eq("pedido_id", pedidoId);
-    
+
   if (errorPagos) throw new Error(`No se pudo calcular el pago acumulado: ${errorPagos.message}`);
 
   const { data: pedido, error: errorPedido } = await supabase
@@ -276,14 +328,13 @@ export async function actualizarEstadoPagoPedidoService(pedidoId: string) {
     .select("pago_total")
     .eq("id", pedidoId)
     .single();
-    
+
   if (errorPedido) throw new Error(`No se pudo leer el pedido: ${errorPedido.message}`);
 
-  // Sumar unicamente montos que hayan sido verificados
   const montoCobrado = (pagos ?? [])
     .filter((p) => p.verificado)
     .reduce((acc, p) => acc + (Number(p.monto) || 0), 0);
-    
+
   const pagoTotal = Number(pedido.pago_total) || 0;
 
   let pagoEstado: "sin_pagar" | "anticipo" | "pagado" = "sin_pagar";
@@ -300,12 +351,11 @@ export async function actualizarEstadoPagoPedidoService(pedidoId: string) {
 }
 
 // ==========================================
-// Subir comprobante de pago QR → bucket empresa-assets (Ruta estática para reemplazo)
+// Subir comprobante de pago QR → bucket empresa-assets
 // ==========================================
 
 export async function subirComprobantePagoService(pedidoId: string, file: File): Promise<string> {
   const extension = file.name.split(".").pop() || "jpg";
-  // Usamos una ruta fija por pedido para que la subida reemplace el archivo anterior en el bucket
   const path = `comprobantes-pago/${pedidoId}/comprobante-anticipo.${extension}`;
 
   const { error: errorUpload } = await supabase.storage
@@ -315,7 +365,6 @@ export async function subirComprobantePagoService(pedidoId: string, file: File):
   if (errorUpload) throw new Error(`No se pudo subir el comprobante: ${errorUpload.message}`);
 
   const { data } = supabase.storage.from("empresa-assets").getPublicUrl(path);
-  
-  // Agregar timestamp a la URL pública para forzar la actualización de cache en navegadores
+
   return `${data.publicUrl}?t=${Date.now()}`;
 }

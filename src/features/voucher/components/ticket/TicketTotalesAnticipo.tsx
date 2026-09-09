@@ -8,9 +8,9 @@ interface TicketTotalesAnticipoProps {
   costoEnvio?: number | string;
   costoDiseno?: number | string;
   subtotalOrden: number | string; // Suma base de piezas
-  montoAnticipo: number | string;
+  montoAnticipo?: number | string;
   porcentajeAnticipo?: number | string;
-  montoSaldo: number | string;
+  montoSaldo?: number | string;
 }
 
 export function TicketTotalesAnticipo({
@@ -26,14 +26,23 @@ export function TicketTotalesAnticipo({
   const numPiezas = Number(subtotalOrden) || 0;
   const numEnvio = Number(costoEnvio) || 0;
   const numDiseno = Number(costoDiseno) || 0;
-  const numAnticipo = Number(montoAnticipo) || 0;
-  const numSaldo = Number(montoSaldo) || 0;
   const numPorcentaje = Number(porcentajeAnticipo) || 50;
 
-  // 2. Cálculo Consolidado (Sin IVA)
+  // 2. Cálculo Consolidado
   const totalCalculado = numPiezas + numEnvio + numDiseno;
 
-  // 3. Banderas condicionales
+  // 3. Cálculo dinámico y preciso del Anticipo y Saldo si no vienen recalculados
+  const numAnticipo =
+    montoAnticipo !== undefined && montoAnticipo !== null
+      ? Number(montoAnticipo)
+      : (totalCalculado * numPorcentaje) / 100;
+
+  const numSaldo =
+    montoSaldo !== undefined && montoSaldo !== null
+      ? Number(montoSaldo)
+      : totalCalculado - numAnticipo;
+
+  // 4. Banderas condicionales
   const tieneEnvio = numEnvio > 0 || Boolean(metodoEnvio);
   const tieneDiseno = numDiseno > 0;
 

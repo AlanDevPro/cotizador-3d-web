@@ -39,6 +39,12 @@ interface DBCotizacionItem {
   filamentos: DBFilamento | DBFilamento[] | null;
 }
 
+// Datos de configuracion_empresa (1:1 con empresas vía empresa_id)
+interface DBConfiguracionEmpresa {
+  qr_pago_url?: string | null;
+  qr_pago_titular?: string | null;
+}
+
 interface DBEmpresa {
   id: string;
   nombre_comercial?: string | null;
@@ -53,6 +59,7 @@ interface DBEmpresa {
   facebook?: string | null;
   ciudad?: string | null;
   ubicacion_url?: string | null;
+  configuracion_empresa?: DBConfiguracionEmpresa | DBConfiguracionEmpresa[] | null;
 }
 
 function mapearPiezaItem(
@@ -153,7 +160,11 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
           instagram,
           facebook,
           ciudad,
-          ubicacion_url
+          ubicacion_url,
+          configuracion_empresa (
+            qr_pago_url,
+            qr_pago_titular
+          )
         ),
         cotizacion_items (
           id,
@@ -208,6 +219,16 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
     );
 
     const rawEmpresa = (Array.isArray(data.empresa) ? data.empresa[0] : data.empresa) as DBEmpresa | null;
+
+    // configuracion_empresa es 1:1 con empresas, pero PostgREST puede
+    // devolverlo como objeto o como arreglo de un elemento según la relación
+    // detectada — se maneja ambos casos igual que con "filamentos".
+    const rawConfig = rawEmpresa
+      ? (Array.isArray(rawEmpresa.configuracion_empresa)
+          ? rawEmpresa.configuracion_empresa[0]
+          : rawEmpresa.configuracion_empresa)
+      : null;
+
     const empresaMapeada: EmpresaInfo | null = rawEmpresa
       ? {
           id: rawEmpresa.id,
@@ -225,6 +246,8 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
           instagram_url: rawEmpresa.instagram || null,
           facebook_url: rawEmpresa.facebook || null,
           ubicacion_url: rawEmpresa.ubicacion_url || null,
+          qr_pago_url: rawConfig?.qr_pago_url || null,
+          qr_pago_titular: rawConfig?.qr_pago_titular || null,
         }
       : null;
 

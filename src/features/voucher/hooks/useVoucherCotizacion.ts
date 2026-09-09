@@ -66,7 +66,6 @@ export function useVoucherCotizacion({
   const empresaNombre = empresa?.nombre ?? "Taller de Impresión 3D";
   const voucherData = cotizacion.voucher_data;
 
-  // Tabs reactivos
   const tabs = useMemo(
     () => [
       {
@@ -83,7 +82,6 @@ export function useVoucherCotizacion({
   const pieza = cotizacion.piezas.find((p) => p.id === tabActivo);
   const esGeneral = tabActivo === "general" || !pieza;
 
-  // Filas para la tabla/vista según la pestaña seleccionada
   const piezasVista = useMemo(
     () => (esGeneral ? cotizacion.piezas : [pieza!]),
     [esGeneral, cotizacion.piezas, pieza]
@@ -94,28 +92,24 @@ export function useVoucherCotizacion({
     [piezasVista, voucherData]
   );
 
-  // Filas completas para el comprobante
   const filasComprobante = useMemo(
     () => cotizacion.piezas.map((p) => construirFila(p, voucherData)),
     [cotizacion.piezas, voucherData]
   );
 
-  // Cálculos base del pedido
   const subtotalOrden = useMemo(
     () => filasComprobante.reduce((acc, f) => acc + f.total, 0),
     [filasComprobante]
   );
-  
+
   const montoImpuestoOrden = cotizacion.monto_impuesto || 0;
   const totalOrden = subtotalOrden + montoImpuestoOrden;
 
-  // Recalculo reactivo dinámico de totales con el tipoEntrega actual
   const { costoEnvio, totalConEnvio, montoAnticipo, montoSaldo } = useMemo(
     () => calcularTotalesPedido(totalOrden, tipoEntrega),
     [totalOrden, tipoEntrega]
   );
 
-  // Totales ajustados a la vista actual (tab general incluye envío e impuesto, tab individual solo el monto de la pieza)
   const subtotalVista = useMemo(
     () => filasVista.reduce((acc, f) => acc + f.total, 0),
     [filasVista]
@@ -125,7 +119,6 @@ export function useVoucherCotizacion({
   const totalVista = esGeneral ? totalConEnvio : subtotalVista;
   const precioMostrado = esGeneral ? totalConEnvio : pieza!.precio_total_pieza;
 
-  // Políticas y datos adicionales
   const politicas = voucherData?.policies?.length
     ? voucherData.policies
     : empresa?.garantia
@@ -152,15 +145,23 @@ export function useVoucherCotizacion({
         `Garantía válida por ${garantiaDias} días tras la recepción del trabajo.`,
       ];
 
-  // El QR se regenera reactivamente cuando cambia el anticipo por el costo de envío
+  // Orden de prioridad del QR mostrado al cliente:
+  // 1. qrPagoUri explícito recibido por props (override manual/pruebas)
+  // 2. empresa.qr_pago_url: el QR bancario/billetera real cargado en
+  //    configuracion_empresa (el que realmente se debe usar para cobrar)
+  // 3. Generador de respaldo (solo texto informativo) si la empresa aún
+  //    no configuró su QR de pago
   const qrImagenSrc = useMemo(
     () =>
       qrPagoUri ||
+      empresa?.qr_pago_url ||
       `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
         `Anticipo pedido ${codigoPedido} - ${empresaNombre} - Monto: ${montoAnticipo.toFixed(2)} Bs`
       )}`,
-    [qrPagoUri, codigoPedido, empresaNombre, montoAnticipo]
+    [qrPagoUri, empresa?.qr_pago_url, codigoPedido, empresaNombre, montoAnticipo]
   );
+
+  const qrPagoTitular = empresa?.qr_pago_titular ?? null;
 
   return {
     empresa,
@@ -192,6 +193,7 @@ export function useVoucherCotizacion({
     direccionMapsUrl,
     notasLegales,
     qrImagenSrc,
+    qrPagoTitular,
   };
 }
 

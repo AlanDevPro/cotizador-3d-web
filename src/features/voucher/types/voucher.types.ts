@@ -111,6 +111,8 @@ export interface EmpresaInfo {
   instagram_url?: string | null;
   facebook_url?: string | null;
   ubicacion_url?: string | null;
+  qr_pago_url?: string | null;
+  qr_pago_titular?: string | null;
 }
 
 export interface VoucherPolicy {
