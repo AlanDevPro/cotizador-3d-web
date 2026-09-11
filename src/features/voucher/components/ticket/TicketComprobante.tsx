@@ -1,5 +1,3 @@
-// src/features/voucher/components/ticket/TicketComprobante.tsx
-
 import { Ticket } from "lucide-react";
 import type { TicketComprobanteProps } from "../../types/voucher.types";
 import { TicketEncabezadoEmpresa } from "./TicketEncabezadoEmpresa";

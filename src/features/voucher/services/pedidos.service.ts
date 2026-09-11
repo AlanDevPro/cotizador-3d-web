@@ -271,6 +271,7 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
       : `Anticipo registrado vía ${dto.metodo}.${detalleEsperado}`,
   });
 
+  // Recalcula y actualiza pago_estado y pago_monto_cobrado en la tabla pedidos
   await actualizarEstadoPagoPedidoService(pedidoId);
 
   return pago;
@@ -327,20 +328,33 @@ export async function actualizarEstadoPagoPedidoService(pedidoId: string) {
 
   if (errorPedido) throw new Error(`No se pudo leer el pedido: ${errorPedido.message}`);
 
-  const montoCobrado = (pagos ?? [])
+  // Suma total registrada (incluye pagos verificados y anticipos declarados por el cliente)
+  const montoReportado = (pagos ?? []).reduce(
+    (acc, p) => acc + (Number(p.monto) || 0),
+    0
+  );
+
+  // Suma exclusiva de pagos verificados formalmente por el admin
+  const montoVerificado = (pagos ?? [])
     .filter((p) => p.verificado)
     .reduce((acc, p) => acc + (Number(p.monto) || 0), 0);
 
   const pagoTotal = Number(pedido.pago_total) || 0;
 
   let pagoEstado: "sin_pagar" | "anticipo" | "pagado" = "sin_pagar";
-  if (montoCobrado > 0 && pagoTotal > 0) {
-    pagoEstado = montoCobrado >= pagoTotal ? "pagado" : "anticipo";
+
+  if (montoVerificado >= pagoTotal && pagoTotal > 0) {
+    pagoEstado = "pagado";
+  } else if (montoReportado > 0) {
+    pagoEstado = "anticipo";
   }
 
   const { error: errorUpdate } = await supabase
     .from("pedidos")
-    .update({ pago_monto_cobrado: montoCobrado, pago_estado: pagoEstado })
+    .update({ 
+      pago_monto_cobrado: montoReportado, 
+      pago_estado: pagoEstado 
+    })
     .eq("id", pedidoId);
 
   if (errorUpdate) throw new Error(`No se pudo actualizar el estado de pago: ${errorUpdate.message}`);

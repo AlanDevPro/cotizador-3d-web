@@ -1,5 +1,3 @@
-// src/features/voucher/components/ticket/TicketAcciones.tsx
-
 import { CheckCircle2, RefreshCw, Upload } from "lucide-react";
 import type { MetodoPago } from "../../types/voucher.types";
 

@@ -1,219 +1,369 @@
-"use client";
+import { supabase } from "@/lib/supabase";
+import type {
+  ActualizarOpcionesPedidoDTO,
+  CrearPedidoDesdeCotizacionDTO,
+  PedidoExistente,
+  RegistrarPagoPedidoDTO,
+  UltimoPago,
+} from "../types/voucher.types";
 
-import { useMemo } from "react";
-import type { VoucherPublicoProps, Tema } from "../types/voucher.types";
-import { TEMAS } from "../constants/voucherConstants";
-import { useVoucherFlujo } from "../hooks/useVoucherFlujo";
-import { useVoucherCotizacion } from "../hooks/useVoucherCotizacion";
-import { mapearPiezasAFilasVoucher } from "../utils/voucherFormatters";
+export type {
+  ActualizarOpcionesPedidoDTO,
+  CrearPedidoDesdeCotizacionDTO,
+  PedidoExistente,
+  RegistrarPagoPedidoDTO,
+  UltimoPago,
+} from "../types/voucher.types";
 
-import { VoucherHeader } from "./VoucherHeader";
-import { VoucherTabsPiezas } from "./VoucherTabsPiezas";
-import { VoucherHeroCard } from "./VoucherHeroCard";
-import { VoucherTablaResumen } from "./VoucherTablaResumen";
-import { VoucherPoliticas } from "./VoucherPoliticas";
-import { VoucherAccionesIniciales } from "./VoucherAccionesIniciales";
-import { VoucherSeleccionOpciones } from "./VoucherSeleccionOpciones";
-import { TicketComprobante } from "./ticket/TicketComprobante";
-import { VoucherUbicacionLocal } from "./VoucherUbicacionLocal";
-import { VoucherFooter } from "./VoucherFooter";
+const CHECKLIST_DEFAULT_LABELS = [
+  "Confirmar diseño y archivo final",
+  "Imprimir pieza(s)",
+  "Control de calidad y postprocesado",
+  "Empacar pedido",
+  "Entregar / despachar pedido",
+];
 
-export function VoucherPublico({
-  cotizacion,
-  onAceptarPedido,
-  onCancelarPedido,
-  clienteNombre,
-  clienteDocumento,
-  clienteTelefono,
-  atendidoPor,
-  numeroPedido,
-  qrPagoUri,
-  ubicacionLocal,
-  ubicacionMapsUrl,
-  onSubirComprobante,
-  onConfirmarPedidoEfectivo,
-  whatsappUrl,
-  tiktokUrl,
-  instagramUrl,
-  facebookUrl,
-}: VoucherPublicoProps) {
-  const flujo = useVoucherFlujo({
-    cotizacion,
-    onAceptarPedidoSuccess: onAceptarPedido,
-    onSubirComprobante,
-    onConfirmarPedidoEfectivo,
+// ==========================================
+// Creación
+// ==========================================
+
+export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacionDTO) {
+  let finalClienteId = dto.clienteId ?? null;
+
+  if (!finalClienteId) {
+    const { data: cotizacion, error: errorCotizacion } = await supabase
+      .from("cotizaciones")
+      .select("id, empresa_id, cliente_id, cliente_nombre, cliente_contacto")
+      .eq("id", dto.cotizacionId)
+      .single();
+
+    if (errorCotizacion) {
+      throw new Error(`Error al verificar la cotización: ${errorCotizacion.message}`);
+    }
+
+    finalClienteId = cotizacion.cliente_id;
+
+    if (!finalClienteId) {
+      const { data: nuevoCliente, error: errorNuevoCliente } = await supabase
+        .from("clientes")
+        .insert({
+          empresa_id: dto.empresaId || cotizacion.empresa_id,
+          nombre: cotizacion.cliente_nombre || "Cliente Web",
+          telefono: cotizacion.cliente_contacto || null,
+        })
+        .select("id")
+        .single();
+
+      if (errorNuevoCliente || !nuevoCliente) {
+        throw new Error(
+          `No se pudo autogenerar el cliente para el pedido: ${errorNuevoCliente?.message}`
+        );
+      }
+
+      finalClienteId = nuevoCliente.id;
+
+      await supabase
+        .from("cotizaciones")
+        .update({ cliente_id: finalClienteId })
+        .eq("id", dto.cotizacionId);
+    }
+  }
+
+  const { data: pedido, error: errorPedido } = await supabase
+    .from("pedidos")
+    .insert({
+      cotizacion_id: dto.cotizacionId,
+      empresa_id: dto.empresaId,
+      cliente_id: finalClienteId,
+      creado_por: dto.creadoPor ?? null,
+      pieza_descripcion: dto.piezaDescripcion,
+      estado: "pendiente",
+      envio_tipo: dto.envioTipo ?? "recoger",
+      pago_total: dto.pagoTotal,
+      pago_anticipo_pct: dto.pagoAnticipoPct ?? 50,
+      pago_monto_cobrado: 0,
+      pago_estado: "sin_pagar",
+    })
+    .select()
+    .single();
+
+  if (errorPedido) {
+    throw new Error(`No se pudo crear el pedido: ${errorPedido.message}`);
+  }
+
+  const { error: errorEvento } = await supabase.from("pedido_eventos").insert({
+    pedido_id: pedido.id,
+    texto: "Pedido aceptado por el cliente desde el comprobante/voucher web.",
   });
+  if (errorEvento) console.warn("⚠️ No se pudo registrar el evento de creación:", errorEvento);
 
-  const datos = useVoucherCotizacion({
-    cotizacion,
-    tabActivo: flujo.tabActivo,
-    tipoEntrega: flujo.tipoEntrega,
-    numeroPedido,
-    clienteNombre,
-    ubicacionLocal,
-    ubicacionMapsUrl,
-    qrPagoUri,
-    fechaEmision: flujo.fechaEmision,
-  });
-
-  const filasMapeadas = useMemo(() => {
-    return mapearPiezasAFilasVoucher(cotizacion.piezas ?? []);
-  }, [cotizacion.piezas]);
-
-  const temaClave = (flujo.tema as Tema) || "rosa";
-  const estiloTema = (TEMAS[temaClave] ?? TEMAS.rosa) as React.CSSProperties;
-  const piezaSeleccionadaId =
-    flujo.tabActivo !== "general" ? flujo.tabActivo : null;
-
-  // Validación estricta para envío a domicilio
-  const domicilioValido =
-    flujo.tipoEntrega === "domicilio"
-      ? Boolean(flujo.direccionDomicilio?.trim()) && Boolean(flujo.ubicacionUrl)
-      : true;
-
-  // La selección de opciones solo está lista si eligió entrega, método de pago y completó los datos requeridos
-  const seleccionCompleta =
-    flujo.seleccionCompleta && domicilioValido;
-
-  const mostrarUbicacionLocal =
-    flujo.metodoPago === "efectivo" &&
-    flujo.pedidoConfirmadoEfectivo &&
-    !flujo.comprobanteVerificado;
-
-  return (
-    <div
-      className="min-h-screen bg-slate-50 px-4 py-8 text-slate-800 antialiased"
-      style={estiloTema}
-    >
-      <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        {/* Cabecera del Voucher */}
-        <VoucherHeader
-          empresaNombre={datos.empresaNombre}
-          empresa={datos.empresa ?? undefined}
-          voucherData={datos.voucherData ?? undefined}
-          creadoEn={cotizacion.creado_en}
-          tema={temaClave}
-          onAlternarTema={flujo.alternarTema}
-        />
-
-        <div className="mt-4 h-1 w-full rounded-full bg-[var(--brand)]" />
-
-        {/* Pestañas de Piezas */}
-        <VoucherTabsPiezas
-          tabs={datos.tabs}
-          tabActivo={flujo.tabActivo}
-          onCambiarTab={flujo.setTabActivo}
-          visible={(cotizacion.piezas?.length ?? 0) > 1}
-        />
-
-        {/* Tarjeta Destacada */}
-        <VoucherHeroCard
-          cotizacion={cotizacion}
-          piezaSeleccionadaId={piezaSeleccionadaId}
-        />
-
-        {/* Tabla Desglose */}
-        <VoucherTablaResumen
-          filas={datos.filasVista ?? filasMapeadas}
-          costoDisenoTotal={cotizacion.costo_diseno_total}
-          subtotal={datos.subtotalVista}
-          montoImpuesto={datos.montoImpuestoVista}
-          total={datos.totalVista}
-        />
-
-        {/* Políticas y Garantía */}
-        <VoucherPoliticas politicas={datos.politicas} />
-
-        {/* Botones de Acción Inicial */}
-        {!flujo.pedidoAceptado && (
-          <VoucherAccionesIniciales
-            onCancelar={onCancelarPedido}
-            onAceptar={flujo.handleAceptarPedido}
-            loading={flujo.isCreatingPedido}
-          />
-        )}
-
-        {/* Flujo de Confirmación y Ticket */}
-        {flujo.pedidoAceptado && (
-          <div className="mt-6 space-y-4">
-            <VoucherSeleccionOpciones
-              visible={flujo.pedidoAceptado && !seleccionCompleta}
-              tipoEntrega={flujo.tipoEntrega}
-              metodoPago={flujo.metodoPago}
-              onSeleccionarEntrega={flujo.handleSeleccionarEntrega}
-              onSeleccionarPago={flujo.handleSeleccionarPago}
-              direccionDomicilio={flujo.direccionDomicilio}
-              onGuardarDireccion={flujo.handleGuardarDireccion}
-              ubicacionUrl={flujo.ubicacionUrl}
-              obteniendoUbicacion={flujo.obteniendoUbicacion}
-              errorUbicacion={flujo.errorUbicacion}
-              onUsarUbicacionActual={flujo.handleUsarUbicacionActual}
-            />
-
-            {seleccionCompleta && (
-              <>
-                <TicketComprobante
-                  empresa={datos.empresa ?? undefined}
-                  empresaNombre={datos.empresaNombre}
-                  voucherData={datos.voucherData ?? undefined}
-                  codigoPedido={datos.codigoPedido}
-                  fechaEmision={flujo.fechaEmision}
-                  atendidoPor={atendidoPor}
-                  nombreCliente={datos.nombreClienteMostrado}
-                  clienteDocumento={clienteDocumento}
-                  clienteTelefono={clienteTelefono}
-                  tipoEntrega={flujo.tipoEntrega}
-                  filasComprobante={datos.filasComprobante ?? filasMapeadas}
-                  subtotalOrden={datos.subtotalOrden}
-                  montoImpuestoOrden={datos.montoImpuestoOrden}
-                  costoEnvio={datos.costoEnvio}
-                  costoDiseno={cotizacion.costo_diseno_total}
-                  totalConEnvio={datos.totalConEnvio}
-                  montoAnticipo={datos.montoAnticipo}
-                  montoSaldo={datos.montoSaldo}
-                  metodoPago={flujo.metodoPago}
-                  verificado={flujo.comprobanteVerificado}
-                  qrImagenSrc={datos.qrImagenSrc}
-                  comprobanteArchivo={flujo.comprobanteArchivo}
-                  pedidoConfirmadoEfectivo={flujo.pedidoConfirmadoEfectivo}
-                  direccionLocal={datos.direccionLocal}
-                  notasLegales={datos.notasLegales}
-                  fileInputRef={
-                    flujo.fileInputRef as React.RefObject<HTMLInputElement>
-                  }
-                  onSeleccionarComprobante={flujo.handleSeleccionarComprobante}
-                  onComprobanteChange={flujo.handleComprobanteChange}
-                  onConfirmarEfectivo={flujo.handleConfirmarEfectivo}
-                  onCambiarOpciones={flujo.handleCambiarOpciones}
-                />
-
-                {mostrarUbicacionLocal && (
-                  <VoucherUbicacionLocal
-                    direccion={datos.direccionLocal}
-                    ubicacionUrl={datos.direccionMapsUrl ?? undefined}
-                  />
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Pie de Página */}
-        <VoucherFooter
-          footerNote={datos.voucherData?.footerNote}
-          sitioWeb={datos.empresa?.sitio_web}
-          whatsappUrl={
-            whatsappUrl ?? datos.empresa?.whatsapp_url ?? datos.empresa?.telefono
-          }
-          tiktokUrl={tiktokUrl ?? datos.empresa?.tiktok_url}
-          facebookUrl={facebookUrl ?? datos.empresa?.facebook_url}
-          instagramUrl={instagramUrl ?? datos.empresa?.instagram_url}
-        />
-      </div>
-    </div>
+  const { error: errorChecklist } = await supabase.from("pedido_checklist_items").insert(
+    CHECKLIST_DEFAULT_LABELS.map((label, index) => ({
+      pedido_id: pedido.id,
+      label,
+      hecho: false,
+      orden: index + 1,
+    }))
   );
+  if (errorChecklist) console.warn("⚠️ No se pudo crear el checklist del pedido:", errorChecklist);
+
+  const { error: errorCotizState } = await supabase
+    .from("cotizaciones")
+    .update({ estado: "aceptada" })
+    .eq("id", dto.cotizacionId);
+  if (errorCotizState) console.warn("⚠️ No se pudo actualizar estado de cotización:", errorCotizState);
+
+  return pedido;
 }
-,
+
+// ==========================================
+// Recuperar pedido / pago existentes
+// ==========================================
+
+export async function getPedidoPorCotizacionIdService(
+  cotizacionId: string
+): Promise<PedidoExistente | null> {
+  const { data, error } = await supabase
+    .from("pedidos")
+    .select(
+      "id, estado, envio_tipo, envio_costo, envio_direccion, envio_ubicacion_url, pago_total, pago_monto_cobrado, pago_estado"
+    )
+    .eq("cotizacion_id", cotizacionId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("🚨 Error al buscar pedido existente:", error);
+    return null;
+  }
+  return data;
+}
+
+export async function getUltimoPagoPedidoService(pedidoId: string): Promise<UltimoPago | null> {
+  const { data, error } = await supabase
+    .from("pedido_pagos")
+    .select("id, metodo, tipo, monto, comprobante_url, verificado")
+    .eq("pedido_id", pedidoId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("🚨 Error al obtener el último pago:", error);
+    return null;
+  }
+  return data as UltimoPago | null;
+}
+
+// ==========================================
+// Actualizar opciones de entrega y ubicación
+// ==========================================
+
+export async function actualizarOpcionesPedidoService(
+  pedidoId: string,
+  dto: ActualizarOpcionesPedidoDTO
+) {
+  const updatePayload: Record<string, unknown> = {};
+  if (dto.envioTipo !== undefined) updatePayload.envio_tipo = dto.envioTipo;
+  if (dto.envioCosto !== undefined) updatePayload.envio_costo = dto.envioCosto;
+  if (dto.pagoTotal !== undefined) updatePayload.pago_total = dto.pagoTotal;
+  if (dto.envioDireccion !== undefined) updatePayload.envio_direccion = dto.envioDireccion;
+  if (dto.envioUbicacionUrl !== undefined) updatePayload.envio_ubicacion_url = dto.envioUbicacionUrl;
+
+  if (Object.keys(updatePayload).length === 0) return null;
+
+  const { data: dataArray, error } = await supabase
+    .from("pedidos")
+    .update(updatePayload)
+    .eq("id", pedidoId)
+    .select(
+      "id, estado, envio_tipo, envio_costo, envio_direccion, envio_ubicacion_url, pago_total"
+    );
+
+  if (error) throw new Error(`Error en base de datos: ${error.message}`);
+  if (!dataArray || dataArray.length === 0) {
+    throw new Error("No se pudieron guardar las opciones. RLS o el pedido no existe.");
+  }
+
+  await supabase.from("pedido_eventos").insert({
+    pedido_id: pedidoId,
+    texto: `Tipo de entrega actualizado: ${JSON.stringify(updatePayload)}`,
+  });
+
+  return dataArray[0];
+}
+
+// ==========================================
+// Registrar / actualizar pago (anticipo) — UPSERT
+// ==========================================
+
+export async function registrarPagoPedidoService(pedidoId: string, dto: RegistrarPagoPedidoDTO) {
+  const montoARegistrar = dto.montoEsperado ?? 0;
+
+  // 1. Buscar si ya existe un anticipo para este pedido
+  const { data: pagoExistente, error: errorBuscar } = await supabase
+    .from("pedido_pagos")
+    .select("id, verificado")
+    .eq("pedido_id", pedidoId)
+    .eq("tipo", dto.tipo)
+    .maybeSingle();
+
+  if (errorBuscar) {
+    throw new Error(`No se pudo verificar el pago existente: ${errorBuscar.message}`);
+  }
+
+  // 2. Si ya fue verificado por el administrador, el pedido queda cerrado
+  if (pagoExistente?.verificado) {
+    throw new Error(
+      "Este pedido ya tiene un pago verificado y no puede modificarse desde aquí."
+    );
+  }
+
+  let pago;
+  const esActualizacion = Boolean(pagoExistente);
+
+  if (pagoExistente) {
+    // 3a. Ya existe -> actualizar la misma fila
+    const { data, error } = await supabase
+      .from("pedido_pagos")
+      .update({
+        metodo: dto.metodo,
+        monto: montoARegistrar,
+        comprobante_url: dto.comprobanteUrl ?? null,
+        verificado: false,
+        fecha: new Date().toISOString(),
+      })
+      .eq("id", pagoExistente.id)
+      .select()
+      .single();
+
+    if (error) throw new Error(`No se pudo actualizar el pago: ${error.message}`);
+    pago = data;
+  } else {
+    // 3b. No existe -> crear el primer registro de anticipo
+    const { data, error } = await supabase
+      .from("pedido_pagos")
+      .insert({
+        pedido_id: pedidoId,
+        tipo: dto.tipo,
+        monto: montoARegistrar,
+        metodo: dto.metodo,
+        comprobante_url: dto.comprobanteUrl ?? null,
+        verificado: false,
+        fecha: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`No se pudo registrar el pago: ${error.message}`);
+    pago = data;
+  }
+
+  const detalleEsperado = montoARegistrar > 0
+    ? ` Monto declarado: ${montoARegistrar.toFixed(2)} Bs (pendiente de verificación por el administrador).`
+    : "";
+
+  await supabase.from("pedido_eventos").insert({
+    pedido_id: pedidoId,
+    texto: esActualizacion
+      ? `Anticipo actualizado vía ${dto.metodo}.${detalleEsperado}`
+      : `Anticipo registrado vía ${dto.metodo}.${detalleEsperado}`,
+  });
+
+  await actualizarEstadoPagoPedidoService(pedidoId);
+
+  return pago;
+}
+
+// ==========================================
+// Anular último pago
+// ==========================================
+
+export async function anularUltimoPagoPedidoService(pedidoId: string) {
+  const { data: ultimoPago, error: errorBuscar } = await supabase
+    .from("pedido_pagos")
+    .select("id")
+    .eq("pedido_id", pedidoId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (errorBuscar) throw new Error(`No se pudo verificar pagos previos: ${errorBuscar.message}`);
+  if (!ultimoPago) return;
+
+  const { error: errorEliminar } = await supabase
+    .from("pedido_pagos")
+    .delete()
+    .eq("id", ultimoPago.id);
+
+  if (errorEliminar) throw new Error(`No se pudo anular el pago anterior: ${errorEliminar.message}`);
+
+  await supabase.from("pedido_eventos").insert({
+    pedido_id: pedidoId,
+    texto: "Anticipo anulado por cambio de opciones del cliente.",
+  });
+
+  await actualizarEstadoPagoPedidoService(pedidoId);
+}
+
+// ==========================================
+// Recalcular pago_estado desde pedido_pagos.monto
+// ==========================================
+
+export async function actualizarEstadoPagoPedidoService(pedidoId: string) {
+  const { data: pagos, error: errorPagos } = await supabase
+    .from("pedido_pagos")
+    .select("monto, verificado")
+    .eq("pedido_id", pedidoId);
+
+  if (errorPagos) throw new Error(`No se pudo calcular el pago acumulado: ${errorPagos.message}`);
+
+  const { data: pedido, error: errorPedido } = await supabase
+    .from("pedidos")
+    .select("pago_total")
+    .eq("id", pedidoId)
+    .single();
+
+  if (errorPedido) throw new Error(`No se pudo leer el pedido: ${errorPedido.message}`);
+
+  const montoCobrado = (pagos ?? [])
+    .filter((p) => p.verificado)
+    .reduce((acc, p) => acc + (Number(p.monto) || 0), 0);
+
+  const pagoTotal = Number(pedido.pago_total) || 0;
+
+  let pagoEstado: "sin_pagar" | "anticipo" | "pagado" = "sin_pagar";
+  if (montoCobrado > 0 && pagoTotal > 0) {
+    pagoEstado = montoCobrado >= pagoTotal ? "pagado" : "anticipo";
+  }
+
+  const { error: errorUpdate } = await supabase
+    .from("pedidos")
+    .update({ pago_monto_cobrado: montoCobrado, pago_estado: pagoEstado })
+    .eq("id", pedidoId);
+
+  if (errorUpdate) throw new Error(`No se pudo actualizar el estado de pago: ${errorUpdate.message}`);
+}
+
+// ==========================================
+// Subir comprobante de pago QR → bucket empresa-assets
+// ==========================================
+
+export async function subirComprobantePagoService(pedidoId: string, file: File): Promise<string> {
+  const extension = file.name.split(".").pop() || "jpg";
+  const path = `comprobantes-pago/${pedidoId}/comprobante-anticipo.${extension}`;
+
+  const { error: errorUpload } = await supabase.storage
+    .from("empresa-assets")
+    .upload(path, file, { upsert: true });
+
+  if (errorUpload) throw new Error(`No se pudo subir el comprobante: ${errorUpload.message}`);
+
+  const { data } = supabase.storage.from("empresa-assets").getPublicUrl(path);
+
+  return `${data.publicUrl}?t=${Date.now()}`;
+}
 
 
 
@@ -427,4 +577,4 @@ export function TicketAcciones({
 }
 
 
-si tengo este codigo y dime como hago para que pueda refresscarse automaticamente mi pagina web cuando cuando mi cliente ya selcione mi metodo y de pago y tipo_envio y ya confirmo o subio su comprobantes dime como hago eso que modificacaciones tengo que hacer en que archivos o como hago para que mi web se refresque automaticamente de forma profesional desde pues de mi cliente confirmo el pedido o subio su comprobante  
+si tengo estos codigos quiero que me des mi codigso completos con las modificaicones para que cunado presiono mi boton de confirmar pedido o mi subir comprobante o reemplazar quiero que tambien se me actualice mi pedido que mi: pago_estado cambie de "sin_pagar" pase a "anticipo" y que tambien se me marque mi "pago_monto_cobrado" que seria el monto del anticipo que se esta cobrando dame mi codigo con esta mejoras profesinales 
