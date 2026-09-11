@@ -1,6 +1,6 @@
 // src/features/voucher/components/ticket/TicketComprobante.tsx
 
-import { RefreshCw, Ticket } from "lucide-react";
+import { Ticket } from "lucide-react";
 import type { TicketComprobanteProps } from "../../types/voucher.types";
 import { TicketEncabezadoEmpresa } from "./TicketEncabezadoEmpresa";
 import { TicketInfoPedido } from "./TicketInfoPedido";
@@ -20,7 +20,6 @@ export function TicketComprobante(props: TicketComprobanteProps) {
       : props.fechaEmision ?? new Date();
 
   const nombreEmpresaSeguro = props.empresaNombre ?? props.empresa?.nombre ?? "EMPRESA";
-
   const pagoVerificado = Boolean(props.verificado);
 
   // Recálculo preventivo a nivel de comprobante para consistencia global
@@ -40,17 +39,6 @@ export function TicketComprobante(props: TicketComprobanteProps) {
           <Ticket className="h-4 w-4 text-[var(--brand)]" />
           3. Tu comprobante de pedido
         </p>
-
-        {!pagoVerificado && (
-          <button
-            type="button"
-            onClick={props.onCambiarOpciones}
-            className="flex items-center gap-1 text-xs font-semibold text-[var(--brand)] hover:underline"
-          >
-            <RefreshCw className="h-3 w-3" />
-            Cambiar opciones
-          </button>
-        )}
       </div>
 
       <div className="relative mx-auto max-w-md space-y-4">
@@ -115,6 +103,7 @@ export function TicketComprobante(props: TicketComprobanteProps) {
             onComprobanteChange={props.onComprobanteChange}
             onSeleccionarComprobante={props.onSeleccionarComprobante}
             onConfirmarEfectivo={props.onConfirmarEfectivo}
+            onCambiarOpciones={props.onCambiarOpciones}
           />
         )}
       </div>

@@ -1,10 +1,18 @@
 // src/app/v/[token]/page.tsx
 import { notFound } from "next/navigation";
+import type { Viewport } from "next";
 import { getCotizacionPorToken } from "@/features/voucher/services/getCotizacionPorToken";
 import { VoucherPublico } from "@/features/voucher/components/VoucherPublico";
 
 // Desactiva el almacenamiento en caché estático para forzar la carga dinámica
 export const revalidate = 0;
+
+// 🔑 FORZAR VISTA DE ESCRITORIO
+// Invalida la escala responsiva móvil e indica al navegador un ancho de escritorio fijo de 1280px.
+export const viewport: Viewport = {
+  width: 1280,
+  initialScale: 0.35, // Escala inicial ajustada para que encaje toda la pantalla en el celular
+};
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -17,7 +25,7 @@ export default async function VoucherPage({ params }: PageProps) {
     notFound();
   }
 
-  // La función ya retorna un tipo `CotizacionPublica | null`
+  // Carga la cotización pública desde la base de datos
   const cotizacion = await getCotizacionPorToken(token);
 
   if (!cotizacion) {

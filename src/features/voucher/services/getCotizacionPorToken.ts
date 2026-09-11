@@ -1,4 +1,3 @@
-//src/features/voucher/services/getCotizacionPorToken.ts
 import { createClient } from "@supabase/supabase-js";
 import type {
   CotizacionPublica,
@@ -36,10 +35,10 @@ interface DBCotizacionItem {
   costo_mano_obra: number | null;
   costo_subtotal_item: number | null;
   filamento_id?: string | null;
+  imagen_url?: string | null; // 👈 nuevo — foto propia de esta pieza
   filamentos: DBFilamento | DBFilamento[] | null;
 }
 
-// Datos de configuracion_empresa (1:1 con empresas vía empresa_id)
 interface DBConfiguracionEmpresa {
   qr_pago_url?: string | null;
   qr_pago_titular?: string | null;
@@ -67,8 +66,7 @@ function mapearPiezaItem(
   costoDirectoTotal: number,
   costoFallosTotal: number,
   montoGananciaTotal: number,
-  montoImpuestoTotal: number,
-  imagenRespaldo: string | null
+  montoImpuestoTotal: number
 ): PiezaDetalle {
   const cantidad = Number(item.cantidad) || 1;
   const subtotalDirecto = Number(item.costo_subtotal_item) || 0;
@@ -104,7 +102,7 @@ function mapearPiezaItem(
     nombre_pieza: item.nombre_pieza || "Pieza sin nombre",
     cantidad,
     precio_total_pieza: precioTotalPieza,
-    imagen_url: imagenRespaldo,
+    imagen_url: item.imagen_url || null, // 👈 ahora es la foto real de ESTA pieza
     peso_gramos: item.peso_gramos ? Number(item.peso_gramos) : null,
     tiempo_impresion_horas: item.tiempo_impresion_horas ? Number(item.tiempo_impresion_horas) : null,
     tiempo_preparacion_minutos: item.tiempo_preparacion_minutos ? Number(item.tiempo_preparacion_minutos) : null,
@@ -181,6 +179,7 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
           costo_mano_obra,
           costo_subtotal_item,
           filamento_id,
+          imagen_url,
           filamentos (
             id,
             material,
@@ -199,7 +198,6 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
     }
 
     const voucherDataObj = (data.voucher_data as VoucherData) || null;
-    const imagenCotizacion = data.imagen_referencia_url || voucherDataObj?.productImageUri || null;
 
     const costoDirectoTotal = Number(data.costo_directo_total) || 0;
     const costoFallosTotal = Number(data.costo_fallos_total) || 0;
@@ -213,16 +211,12 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
         costoDirectoTotal,
         costoFallosTotal,
         montoGananciaTotal,
-        montoImpuestoTotal,
-        imagenCotizacion
+        montoImpuestoTotal
       )
     );
 
     const rawEmpresa = (Array.isArray(data.empresa) ? data.empresa[0] : data.empresa) as DBEmpresa | null;
 
-    // configuracion_empresa es 1:1 con empresas, pero PostgREST puede
-    // devolverlo como objeto o como arreglo de un elemento según la relación
-    // detectada — se maneja ambos casos igual que con "filamentos".
     const rawConfig = rawEmpresa
       ? (Array.isArray(rawEmpresa.configuracion_empresa)
           ? rawEmpresa.configuracion_empresa[0]
@@ -268,7 +262,7 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
       cliente_contacto: data.cliente_contacto || null,
       estado: data.estado || null,
       notas: data.notas || null,
-      imagen_referencia_url: imagenCotizacion,
+      imagen_referencia_url: data.imagen_referencia_url || voucherDataObj?.productImageUri || null,
       piezas: piezasMapeadas,
       empresa: empresaMapeada,
       voucher_data: voucherDataObj,

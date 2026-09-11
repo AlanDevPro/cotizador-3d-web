@@ -1,245 +1,505 @@
-import type { RefObject, ChangeEvent } from "react";
+// src/features/voucher/hooks/useVoucherCotizacion.ts
+"use client";
 
-export type TipoEntrega = "recoger" | "domicilio";
-export type MetodoPago = "efectivo" | "qr";
-export type Tema = "rosa" | "morado";
-export type TabId = "general" | string;
+import { useMemo } from "react";
+import type {
+  CotizacionPublica,
+  FilaVoucher,
+  PiezaDetalle,
+  TabId,
+  TipoEntrega,
+} from "../types/voucher.types";
+import {
+  DEFAULT_GARANTIA_DIAS,
+  DEFAULT_UBICACION,
+} from "../constants/voucherConstants";
+import { detalleTecnicoPieza } from "../utils/voucherFormatters";
+import { calcularTotalesPedido } from "../utils/calcularTotalesPedido";
 
-// ==========================================
-// DTOs & Interfaces de Pago / Pedido
-// ==========================================
-
-export interface CrearPedidoDesdeCotizacionDTO {
-  cotizacionId: string;
-  empresaId: string;
-  clienteId?: string | null;
-  envioTipo?: TipoEntrega | string | null;
-  creadoPor?: string | null;
-  piezaDescripcion: string;
-  pagoTotal: number;
-  pagoAnticipoPct?: number;
-}
-
-export interface ActualizarOpcionesPedidoDTO {
-  envioTipo?: TipoEntrega | string | null;
-  envioCosto?: number | null;
-  pagoTotal?: number | null;
-}
-
-export interface RegistrarPagoPedidoDTO {
-  tipo: "anticipo" | "saldo" | "total";
-  metodo: "efectivo" | "qr";
-  comprobanteUrl?: string | null;
-  montoEsperado?: number; // solo informativo (evento), nunca se persiste en pedido_pagos.monto
-}
-
-export interface PedidoExistente {
-  id: string;
-  estado: string;
-  envio_tipo: string | null;
-  envio_costo: number | null;
-  pago_total: number | null;
-  pago_monto_cobrado: number | null;
-  pago_estado: string | null;
-}
-
-export interface UltimoPago {
-  id: string;
-  metodo: "efectivo" | "qr";
-  tipo: string;
-  monto: number;
-  comprobante_url: string | null;
-  verificado: boolean;
-}
-
-// ==========================================
-// Dominios Principales (Filamento, Pieza, Empresa)
-// ==========================================
-
-export interface FilamentoInfo {
-  id: string;
-  material: string;
-  color: string;
-  color_hex?: string | null;
-  marca?: string | null;
-}
-
-export interface PiezaDetalle {
-  id: string;
-  nombre_pieza: string;
-  cantidad: number;
-  precio_total_pieza: number;
-  imagen_url?: string | null;
-
-  // Información de Filamento Normalizada
-  filamento_id?: string | null;
-  filamento?: FilamentoInfo | null;
-
-  // Especificaciones Técnicas
-  peso_gramos?: number | null;
-  tiempo_impresion_horas?: number | null;
-  tiempo_preparacion_minutos?: number | null;
-  tiempo_postprocesado_minutos?: number | null;
-
-  // Desglose Financiero Directo
-  costo_material: number;
-  costo_mano_obra: number;
-  costo_depreciacion: number;
-  costo_energia: number;
-  costo_mantenimiento: number;
-  subtotal_directo: number;
-  proporcion_pct: number;
-  costo_fallos_pieza: number;
-  costo_base_pieza: number;
-  monto_ganancia_pieza: number;
-}
-
-export interface EmpresaInfo {
-  id: string;
-  nombre: string;
-  nombre_comercial?: string | null;
-  razon_social?: string | null;
-  logo_url?: string | null;
-  garantia?: string | null;
-  sitio_web?: string | null;
-  nit?: string | null;
-  telefono?: string | null;
-  direccion?: string | null;
-  ciudad?: string | null;
-  whatsapp_url?: string | null;
-  tiktok_url?: string | null;
-  instagram_url?: string | null;
-  facebook_url?: string | null;
-  ubicacion_url?: string | null;
-}
-
-export interface VoucherPolicy {
-  label: string;
-  text: string;
-}
-
-export interface VoucherData {
-  documentTitle?: string | null;
-  companyTagline?: string | null;
-  validityLabel?: string | null;
-  footerNote?: string | null;
-  logoUri?: string | null;
-  productImageUri?: string | null;
-  policies?: VoucherPolicy[] | null;
-  garantiaDias?: number | null;
-  notasLegales?: string[] | null;
-}
-
-export interface CotizacionPublica {
-  id: string;
-  creado_en: string;
-  codigo_cotizacion?: string | null;
-  precio_final: number;
-  monto_impuesto?: number | null;
-  porcentaje_impuesto?: number | null;
-  costo_diseno_total: number;
-  costo_directo_total: number;
-  costo_indirecto_total: number;
-  costo_fallos_total: number;
-  subtotal_costo_base: number;
-  monto_ganancia: number;
-  margen_ganancia_aplicado_pct: number;
-  cliente_nombre?: string | null;
-  cliente_contacto?: string | null;
-  estado?: string | null;
-  notas?: string | null;
-  imagen_referencia_url?: string | null;
-  piezas: PiezaDetalle[];
-  empresa?: EmpresaInfo | null;
-  voucher_data?: VoucherData | null;
-}
-
-export interface FilaVoucher {
-  pieza: PiezaDetalle;
-  descripcion: string;
-  cantidad: number;
-  precioUnitario: number;
-  total: number;
-  material: string;
-  color: string;
-  colorHex?: string | null;
-  materialColor: string;
-  detalleTecnico?: string | null;
-}
-
-// ==========================================
-// Props de Componentes
-// ==========================================
-
-export interface VoucherPublicoProps {
+interface UseVoucherCotizacionParams {
   cotizacion: CotizacionPublica;
-  onAceptarPedido?: () => void;
-  onCancelarPedido?: () => void;
-  clienteNombre?: string;
-  clienteDocumento?: string;
-  clienteTelefono?: string;
-  atendidoPor?: string;
+  tabActivo: TabId;
+  tipoEntrega: TipoEntrega | null;
   numeroPedido?: string;
-  qrPagoUri?: string;
+  clienteNombre?: string;
   ubicacionLocal?: string;
   ubicacionMapsUrl?: string;
-  onSubirComprobante?: (archivo: File) => void;
+  qrPagoUri?: string;
+  fechaEmision: Date;
+}
+
+function construirFila(
+  p: PiezaDetalle,
+  voucherData?: CotizacionPublica["voucher_data"]
+): FilaVoucher {
+  const material = p.filamento?.material ?? voucherData?.documentTitle ?? "PLA";
+  const color = p.filamento?.color ?? "A definir";
+  const colorHex = p.filamento?.color_hex ?? null;
+  const materialColor = [material, color].filter(Boolean).join(" ");
+
+  return {
+    pieza: p,
+    descripcion: p.nombre_pieza,
+    cantidad: p.cantidad,
+    precioUnitario: p.cantidad > 0 ? p.precio_total_pieza / p.cantidad : p.precio_total_pieza,
+    total: p.precio_total_pieza,
+    material,
+    color,
+    colorHex,
+    materialColor,
+    detalleTecnico: detalleTecnicoPieza(p),
+  };
+}
+
+export function useVoucherCotizacion({
+  cotizacion,
+  tabActivo,
+  tipoEntrega,
+  numeroPedido,
+  clienteNombre,
+  ubicacionLocal,
+  ubicacionMapsUrl,
+  qrPagoUri,
+  fechaEmision,
+}: UseVoucherCotizacionParams) {
+  const empresa = cotizacion.empresa;
+  const empresaNombre = empresa?.nombre ?? "Taller de Impresión 3D";
+  const voucherData = cotizacion.voucher_data;
+
+  const tabs = useMemo(
+    () => [
+      {
+        id: "general" as TabId,
+        label: `General (${cotizacion.piezas.length} ${
+          cotizacion.piezas.length === 1 ? "pieza" : "piezas"
+        })`,
+      },
+      ...cotizacion.piezas.map((p) => ({ id: p.id, label: p.nombre_pieza })),
+    ],
+    [cotizacion.piezas]
+  );
+
+  const pieza = cotizacion.piezas.find((p) => p.id === tabActivo);
+  const esGeneral = tabActivo === "general" || !pieza;
+
+  const piezasVista = useMemo(
+    () => (esGeneral ? cotizacion.piezas : [pieza!]),
+    [esGeneral, cotizacion.piezas, pieza]
+  );
+
+  const filasVista = useMemo(
+    () => piezasVista.map((p) => construirFila(p, voucherData)),
+    [piezasVista, voucherData]
+  );
+
+  const filasComprobante = useMemo(
+    () => cotizacion.piezas.map((p) => construirFila(p, voucherData)),
+    [cotizacion.piezas, voucherData]
+  );
+
+  const subtotalOrden = useMemo(
+    () => filasComprobante.reduce((acc, f) => acc + f.total, 0),
+    [filasComprobante]
+  );
+
+  const montoImpuestoOrden = cotizacion.monto_impuesto || 0;
+  const totalOrden = subtotalOrden + montoImpuestoOrden;
+
+  const { costoEnvio, totalConEnvio, montoAnticipo, montoSaldo } = useMemo(
+    () => calcularTotalesPedido(totalOrden, tipoEntrega),
+    [totalOrden, tipoEntrega]
+  );
+
+  const subtotalVista = useMemo(
+    () => filasVista.reduce((acc, f) => acc + f.total, 0),
+    [filasVista]
+  );
+
+  const montoImpuestoVista = esGeneral ? montoImpuestoOrden : 0;
+  const totalVista = esGeneral ? totalConEnvio : subtotalVista;
+  const precioMostrado = esGeneral ? totalConEnvio : pieza!.precio_total_pieza;
+
+  const politicas = voucherData?.policies?.length
+    ? voucherData.policies
+    : empresa?.garantia
+    ? [{ label: "Garantía", text: empresa.garantia }]
+    : [];
+
+  const garantiaDias = voucherData?.garantiaDias ?? DEFAULT_GARANTIA_DIAS;
+
+  const materialNombre = cotizacion.piezas[0]?.filamento?.material || "PLA - Genérico";
+  const colorNombre = cotizacion.piezas[0]?.filamento?.color || "A definir / Según catálogo";
+  const imagenProducto = voucherData?.productImageUri;
+
+  const codigoPedido =
+    numeroPedido ||
+    `ORD-${fechaEmision.getFullYear()}-${cotizacion.id?.slice(0, 4)?.toUpperCase() ?? "0000"}`;
+  const nombreClienteMostrado = clienteNombre?.trim() || "Cliente";
+  const direccionLocal = ubicacionLocal?.trim() || empresa?.direccion || DEFAULT_UBICACION;
+  const direccionMapsUrl = ubicacionMapsUrl || empresa?.ubicacion_url || null;
+
+  const notasLegales = voucherData?.notasLegales?.length
+    ? voucherData.notasLegales
+    : [
+        "Este documento es un comprobante de pedido y no reemplaza a la factura fiscal.",
+        `Garantía válida por ${garantiaDias} días tras la recepción del trabajo.`,
+      ];
+
+  // Orden de prioridad del QR mostrado al cliente:
+  // 1. qrPagoUri explícito recibido por props (override manual/pruebas)
+  // 2. empresa.qr_pago_url: el QR bancario/billetera real cargado en
+  //    configuracion_empresa (el que realmente se debe usar para cobrar)
+  // 3. Generador de respaldo (solo texto informativo) si la empresa aún
+  //    no configuró su QR de pago
+  const qrImagenSrc = useMemo(
+    () =>
+      qrPagoUri ||
+      empresa?.qr_pago_url ||
+      `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+        `Anticipo pedido ${codigoPedido} - ${empresaNombre} - Monto: ${montoAnticipo.toFixed(2)} Bs`
+      )}`,
+    [qrPagoUri, empresa?.qr_pago_url, codigoPedido, empresaNombre, montoAnticipo]
+  );
+
+  const qrPagoTitular = empresa?.qr_pago_titular ?? null;
+
+  return {
+    empresa,
+    empresaNombre,
+    voucherData,
+    tabs,
+    pieza,
+    esGeneral,
+    precioMostrado,
+    filasVista,
+    subtotalVista,
+    montoImpuestoVista,
+    totalVista,
+    filasComprobante,
+    subtotalOrden,
+    montoImpuestoOrden,
+    costoEnvio,
+    totalConEnvio,
+    montoAnticipo,
+    montoSaldo,
+    politicas,
+    garantiaDias,
+    materialNombre,
+    colorNombre,
+    imagenProducto,
+    codigoPedido,
+    nombreClienteMostrado,
+    direccionLocal,
+    direccionMapsUrl,
+    notasLegales,
+    qrImagenSrc,
+    qrPagoTitular,
+  };
+}
+
+export type UseVoucherCotizacionReturn = ReturnType<typeof useVoucherCotizacion>;
+
+
+
+
+import { useState, useRef, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import type {
+  TipoEntrega,
+  MetodoPago,
+  CotizacionPublica,
+  PiezaDetalle,
+  CrearPedidoDesdeCotizacionDTO,
+} from "../types/voucher.types";
+import { calcularTotalesPedido } from "../utils/calcularTotalesPedido";
+import {
+  crearPedidoPendienteService,
+  actualizarOpcionesPedidoService,
+  registrarPagoPedidoService,
+  subirComprobantePagoService,
+  getPedidoPorCotizacionIdService,
+  getUltimoPagoPedidoService,
+} from "../services/pedidos.service";
+
+interface UseVoucherFlujoProps {
+  cotizacion: CotizacionPublica;
+  onAceptarPedidoSuccess?: (pedidoId: string) => void;
+  onSubirComprobante?: (file: File) => void;
   onConfirmarPedidoEfectivo?: () => void;
-  instagramUrl?: string;
-  whatsappUrl?: string;
-  facebookUrl?: string;  tiktokUrl?: string;
 }
 
-export interface VoucherTablaResumenProps {
-  filas: FilaVoucher[];
-  costoDisenoTotal?: number | null;
-  subtotal: number;
-  montoImpuesto: number;
-  total: number;
-}
+export function useVoucherFlujo({
+  cotizacion,
+  onAceptarPedidoSuccess,
+  onSubirComprobante,
+  onConfirmarPedidoEfectivo,
+}: UseVoucherFlujoProps) {
+  const [tema, setTema] = useState<string>("rosa");
+  const [tabActivo, setTabActivo] = useState<string>("general");
+  const [pedidoAceptado, setPedidoAceptado] = useState<boolean>(false);
+  const [isCreatingPedido, setIsCreatingPedido] = useState<boolean>(false);
+  const [isUpdatingPedido, setIsUpdatingPedido] = useState<boolean>(false);
+  const [pedidoId, setPedidoId] = useState<string | null>(null);
 
-export interface VoucherHeaderProps {
-  empresaNombre?: string | null;
-  empresa?: EmpresaInfo | null;
-  voucherData?: VoucherData | null;
-  creadoEn?: string;
-  tema: Tema;
-  onAlternarTema: () => void;
-}
+  const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega | null>(null);
+  const [metodoPago, setMetodoPago] = useState<MetodoPago | null>(null);
 
-export interface TicketComprobanteProps {
-  empresa?: EmpresaInfo | null;
-  empresaNombre?: string | null;
-  voucherData?: VoucherData | null;
-  codigoPedido?: string | null;
-  fechaEmision?: Date | string;
-  atendidoPor?: string;
-  nombreCliente?: string | null;
-  clienteDocumento?: string;
-  clienteTelefono?: string;
-  tipoEntrega: TipoEntrega | null;
-  filasComprobante: FilaVoucher[];
-  subtotalOrden: number;
-  montoImpuestoOrden: number;
-  costoEnvio: number;
-  costoDiseno?: number | string;
-  totalConEnvio: number;
-  montoAnticipo: number;
-  montoSaldo: number;
-  metodoPago: MetodoPago | null;
-  qrImagenSrc?: string | null;
-  comprobanteArchivo: File | null;
-  pedidoConfirmadoEfectivo: boolean;
-  verificado?: boolean; // Trazabilidad para la auditoría de pago
-  direccionLocal?: string | null;
-  notasLegales?: string[] | null;
-  fileInputRef: RefObject<HTMLInputElement>;
-  onSeleccionarComprobante: () => void;
-  onComprobanteChange: (e: ChangeEvent<HTMLInputElement>) => void;
-  onConfirmarEfectivo: () => void;
-  onCambiarOpciones: () => void;
-}
+  const [comprobanteArchivo, setComprobanteArchivo] = useState<File | null>(null);
+  const [pedidoConfirmadoEfectivo, setPedidoConfirmadoEfectivo] = useState<boolean>(false);
 
+  const [pagoId, setPagoId] = useState<string | null>(null);
+  const [comprobanteVerificado, setComprobanteVerificado] = useState<boolean>(false);
+
+  // Guarda contra doble-click / doble-submit mientras se registra el anticipo
+  const [isRegistrandoPago, setIsRegistrandoPago] = useState<boolean>(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fechaEmision = new Date();
+
+  useEffect(() => {
+    let activo = true;
+
+    (async () => {
+      const pedidoExistente = await getPedidoPorCotizacionIdService(cotizacion.id);
+      if (!activo || !pedidoExistente) return;
+
+      setPedidoId(pedidoExistente.id);
+      setPedidoAceptado(true);
+
+      if (pedidoExistente.envio_tipo) {
+        setTipoEntrega(pedidoExistente.envio_tipo as TipoEntrega);
+      }
+
+      const ultimoPago = await getUltimoPagoPedidoService(pedidoExistente.id);
+      if (ultimoPago && activo) {
+        setMetodoPago(ultimoPago.metodo as MetodoPago);
+        setPagoId(ultimoPago.id);
+        setComprobanteVerificado(ultimoPago.verificado);
+        if (ultimoPago.metodo === "efectivo") setPedidoConfirmadoEfectivo(true);
+      }
+    })();
+
+    return () => {
+      activo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cotizacion.id]);
+
+  useEffect(() => {
+    if (!pagoId) return;
+
+    const channel = supabase
+      .channel(`pedido_pago_${pagoId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "pedido_pagos",
+          filter: `id=eq.${pagoId}`,
+        },
+        (payload) => {
+          if (payload.new?.verificado) {
+            setComprobanteVerificado(true);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [pagoId]);
+
+  const alternarTema = () => setTema((prev) => (prev === "rosa" ? "morado" : "rosa"));
+
+  // 1. Creación básica del pedido
+  const handleAceptarPedido = async () => {
+    if (isCreatingPedido || pedidoId) return;
+
+    try {
+      setIsCreatingPedido(true);
+
+      const descripcionPiezas = cotizacion.piezas?.length
+        ? cotizacion.piezas.map((p: PiezaDetalle) => p.nombre_pieza).join(", ")
+        : "Pieza 3D personalizada";
+
+      const dto: CrearPedidoDesdeCotizacionDTO = {
+        cotizacionId: cotizacion.id,
+        empresaId: cotizacion.empresa?.id ?? "",
+        clienteId: null,
+        creadoPor: null,
+        piezaDescripcion: descripcionPiezas,
+        pagoTotal: cotizacion.precio_final ?? 0,
+        pagoAnticipoPct: 50,
+      };
+
+      const pedidoCreado = await crearPedidoPendienteService(dto);
+
+      setPedidoId(pedidoCreado.id);
+      setPedidoAceptado(true);
+      onAceptarPedidoSuccess?.(pedidoCreado.id);
+    } catch (error) {
+      console.error("Error al procesar el pedido:", error);
+      alert("Ocurrió un error al crear tu pedido. Por favor intenta nuevamente.");
+    } finally {
+      setIsCreatingPedido(false);
+    }
+  };
+
+  // 2. Selección de entrega
+  const handleSeleccionarEntrega = async (tipo: TipoEntrega) => {
+    setTipoEntrega(tipo);
+    if (!pedidoId) return;
+
+    try {
+      setIsUpdatingPedido(true);
+      const { costoEnvio, totalConEnvio } = calcularTotalesPedido(
+        cotizacion.precio_final ?? 0,
+        tipo
+      );
+
+      await actualizarOpcionesPedidoService(pedidoId, {
+        envioTipo: tipo,
+        envioCosto: costoEnvio,
+        pagoTotal: totalConEnvio,
+      });
+    } catch (error) {
+      console.error("Error al guardar tipo de entrega:", error);
+    } finally {
+      setIsUpdatingPedido(false);
+    }
+  };
+
+  // 3. Selección de método de pago
+  const handleSeleccionarPago = (metodo: MetodoPago) => {
+    setMetodoPago(metodo);
+  };
+
+  const handleSeleccionarComprobante = () => {
+    if (isRegistrandoPago) return;
+    fileInputRef.current?.click();
+  };
+
+  // 4. Comprobante QR subido → registrarPagoPedidoService hace upsert
+  // (crea el anticipo la primera vez, lo actualiza si ya existía)
+  const handleComprobanteChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Solo se permiten archivos de imagen (JPG, PNG, WEBP, etc.).");
+      if (e.target) e.target.value = "";
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    // Evita que un doble-click dispare dos registros mientras el primero
+    // todavía no terminó de guardarse.
+    if (isRegistrandoPago) {
+      e.target.value = "";
+      return;
+    }
+
+    setComprobanteArchivo(file);
+    onSubirComprobante?.(file);
+    e.target.value = "";
+
+    if (!pedidoId || !tipoEntrega) return;
+
+    try {
+      setIsRegistrandoPago(true);
+      setIsUpdatingPedido(true);
+      const { montoAnticipo } = calcularTotalesPedido(cotizacion.precio_final ?? 0, tipoEntrega);
+      const comprobanteUrl = await subirComprobantePagoService(pedidoId, file);
+
+      const pago = await registrarPagoPedidoService(pedidoId, {
+        tipo: "anticipo",
+        metodo: "qr",
+        comprobanteUrl,
+        montoEsperado: montoAnticipo,
+      });
+
+      setPagoId(pago.id);
+      setComprobanteVerificado(false);
+    } catch (error) {
+      console.error("Error al registrar el pago QR:", error);
+      alert("No se pudo registrar tu comprobante. Intenta nuevamente.");
+    } finally {
+      setIsUpdatingPedido(false);
+      setIsRegistrandoPago(false);
+    }
+  };
+
+  // 5. Confirmación de pago en efectivo (upsert, mismo criterio)
+  const handleConfirmarEfectivo = async () => {
+    if (!pedidoId || !tipoEntrega || isRegistrandoPago) return;
+
+    try {
+      setIsRegistrandoPago(true);
+      setIsUpdatingPedido(true);
+      const { montoAnticipo } = calcularTotalesPedido(cotizacion.precio_final ?? 0, tipoEntrega);
+
+      const pago = await registrarPagoPedidoService(pedidoId, {
+        tipo: "anticipo",
+        metodo: "efectivo",
+        montoEsperado: montoAnticipo,
+      });
+
+      setPagoId(pago.id);
+      setComprobanteVerificado(false);
+      setPedidoConfirmadoEfectivo(true);
+      onConfirmarPedidoEfectivo?.();
+    } catch (error) {
+      console.error("Error al confirmar el pago en efectivo:", error);
+      alert("No se pudo confirmar tu pedido. Intenta nuevamente.");
+    } finally {
+      setIsUpdatingPedido(false);
+      setIsRegistrandoPago(false);
+    }
+  };
+
+  // 6. Cambiar opciones: YA NO borra el pago. Solo resetea la UI para que el
+  // cliente vuelva a elegir envio_tipo/metodo_pago; al volver a confirmar
+  // (efectivo) o subir comprobante (QR), registrarPagoPedidoService
+  // encuentra el anticipo existente y lo ACTUALIZA en la misma fila.
+  const handleCambiarOpciones = () => {
+    setTipoEntrega(null);
+    setMetodoPago(null);
+    setPedidoConfirmadoEfectivo(false);
+    setComprobanteArchivo(null);
+    setComprobanteVerificado(false);
+    // pagoId se mantiene: sigue siendo el mismo registro que se actualizará
+  };
+
+  const seleccionCompleta = Boolean(tipoEntrega && metodoPago);
+
+  return {
+    tema,
+    alternarTema,
+    tabActivo,
+    setTabActivo,
+    pedidoAceptado,
+    pedidoId,
+    isCreatingPedido,
+    isUpdatingPedido,
+    tipoEntrega,
+    metodoPago,
+    handleSeleccionarEntrega,
+    handleSeleccionarPago,
+    comprobanteArchivo,
+    pedidoConfirmadoEfectivo,
+    comprobanteVerificado,
+    seleccionCompleta,
+    fechaEmision,
+    fileInputRef,
+    handleAceptarPedido,
+    handleSeleccionarComprobante,
+    handleComprobanteChange,
+    handleConfirmarEfectivo,
+    handleCambiarOpciones,
+  };
+}
 
 
 import { supabase } from "@/lib/supabase";
@@ -615,22 +875,67 @@ export async function subirComprobantePagoService(pedidoId: string, file: File):
 
 
 
-//src/features/voucher/services/getCotizacionPorToken.ts
-import { createClient } from "@supabase/supabase-js";
-import type {
-  CotizacionPublica,
-  PiezaDetalle,
-  EmpresaInfo,
-  VoucherData,
-  FilamentoInfo,
-} from "../types/voucher.types";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import type { RefObject, ChangeEvent } from "react";
 
-interface DBFilamento {
+export type TipoEntrega = "recoger" | "domicilio";
+export type MetodoPago = "efectivo" | "qr";
+export type Tema = "rosa" | "morado";
+export type TabId = "general" | string;
+
+// ==========================================
+// DTOs & Interfaces de Pago / Pedido
+// ==========================================
+
+export interface CrearPedidoDesdeCotizacionDTO {
+  cotizacionId: string;
+  empresaId: string;
+  clienteId?: string | null;
+  envioTipo?: TipoEntrega | string | null;
+  creadoPor?: string | null;
+  piezaDescripcion: string;
+  pagoTotal: number;
+  pagoAnticipoPct?: number;
+}
+
+export interface ActualizarOpcionesPedidoDTO {
+  envioTipo?: TipoEntrega | string | null;
+  envioCosto?: number | null;
+  pagoTotal?: number | null;
+}
+
+export interface RegistrarPagoPedidoDTO {
+  tipo: "anticipo" | "saldo" | "total";
+  metodo: "efectivo" | "qr";
+  comprobanteUrl?: string | null;
+  montoEsperado?: number; // solo informativo (evento), nunca se persiste en pedido_pagos.monto
+}
+
+export interface PedidoExistente {
+  id: string;
+  estado: string;
+  envio_tipo: string | null;
+  envio_costo: number | null;
+  pago_total: number | null;
+  pago_monto_cobrado: number | null;
+  pago_estado: string | null;
+}
+
+export interface UltimoPago {
+  id: string;
+  metodo: "efectivo" | "qr";
+  tipo: string;
+  monto: number;
+  comprobante_url: string | null;
+  verificado: boolean;
+}
+
+// ==========================================
+// Dominios Principales (Filamento, Pieza, Empresa)
+// ==========================================
+
+export interface FilamentoInfo {
   id: string;
   material: string;
   color: string;
@@ -638,631 +943,300 @@ interface DBFilamento {
   marca?: string | null;
 }
 
-interface DBCotizacionItem {
+export interface PiezaDetalle {
   id: string;
-  nombre_pieza: string | null;
-  cantidad: number | null;
-  peso_gramos: number | null;
-  tiempo_impresion_horas: number | null;
-  tiempo_preparacion_minutos: number | null;
-  tiempo_postprocesado_minutos: number | null;
-  costo_material: number | null;
-  costo_energia: number | null;
-  costo_amortizacion: number | null;
-  costo_mantenimiento: number | null;
-  costo_mano_obra: number | null;
-  costo_subtotal_item: number | null;
+  nombre_pieza: string;
+  cantidad: number;
+  precio_total_pieza: number;
+  imagen_url?: string | null;
+
+  // Información de Filamento Normalizada
   filamento_id?: string | null;
-  filamentos: DBFilamento | DBFilamento[] | null;
+  filamento?: FilamentoInfo | null;
+
+  // Especificaciones Técnicas
+  peso_gramos?: number | null;
+  tiempo_impresion_horas?: number | null;
+  tiempo_preparacion_minutos?: number | null;
+  tiempo_postprocesado_minutos?: number | null;
+
+  // Desglose Financiero Directo
+  costo_material: number;
+  costo_mano_obra: number;
+  costo_depreciacion: number;
+  costo_energia: number;
+  costo_mantenimiento: number;
+  subtotal_directo: number;
+  proporcion_pct: number;
+  costo_fallos_pieza: number;
+  costo_base_pieza: number;
+  monto_ganancia_pieza: number;
 }
 
-interface DBEmpresa {
+export interface EmpresaInfo {
   id: string;
+  nombre: string;
   nombre_comercial?: string | null;
   razon_social?: string | null;
   logo_url?: string | null;
   garantia?: string | null;
   sitio_web?: string | null;
   nit?: string | null;
-  whatsapp?: string | null;
-  direccion_fiscal?: string | null;
-  instagram?: string | null;
-  facebook?: string | null;
+  telefono?: string | null;
+  direccion?: string | null;
   ciudad?: string | null;
+  whatsapp_url?: string | null;
+  tiktok_url?: string | null;
+  instagram_url?: string | null;
+  facebook_url?: string | null;
   ubicacion_url?: string | null;
+  qr_pago_url?: string | null;
+  qr_pago_titular?: string | null;
 }
 
-function mapearPiezaItem(
-  item: DBCotizacionItem,
-  costoDirectoTotal: number,
-  costoFallosTotal: number,
-  montoGananciaTotal: number,
-  montoImpuestoTotal: number,
-  imagenRespaldo: string | null
-): PiezaDetalle {
-  const cantidad = Number(item.cantidad) || 1;
-  const subtotalDirecto = Number(item.costo_subtotal_item) || 0;
-
-  const proporcionPct = costoDirectoTotal > 0 ? subtotalDirecto / costoDirectoTotal : 0;
-  const costoFallosPieza = costoFallosTotal * proporcionPct;
-  const montoGananciaPieza = montoGananciaTotal * proporcionPct;
-  const costoBasePieza = subtotalDirecto + costoFallosPieza;
-  const impuestoPieza = montoImpuestoTotal * proporcionPct;
-
-  const precioTotalPieza =
-    subtotalDirecto > 0
-      ? costoBasePieza + montoGananciaPieza + impuestoPieza
-      : subtotalDirecto;
-
-  const rawFilamento = Array.isArray(item.filamentos)
-    ? item.filamentos[0]
-    : item.filamentos;
-
-  const filamento: FilamentoInfo | null =
-    rawFilamento && rawFilamento.material
-      ? {
-          id: rawFilamento.id,
-          material: rawFilamento.material,
-          color: rawFilamento.color,
-          color_hex: rawFilamento.color_hex || null,
-          marca: rawFilamento.marca || null,
-        }
-      : null;
-
-  return {
-    id: item.id,
-    nombre_pieza: item.nombre_pieza || "Pieza sin nombre",
-    cantidad,
-    precio_total_pieza: precioTotalPieza,
-    imagen_url: imagenRespaldo,
-    peso_gramos: item.peso_gramos ? Number(item.peso_gramos) : null,
-    tiempo_impresion_horas: item.tiempo_impresion_horas ? Number(item.tiempo_impresion_horas) : null,
-    tiempo_preparacion_minutos: item.tiempo_preparacion_minutos ? Number(item.tiempo_preparacion_minutos) : null,
-    tiempo_postprocesado_minutos: item.tiempo_postprocesado_minutos ? Number(item.tiempo_postprocesado_minutos) : null,
-    filamento_id: item.filamento_id || filamento?.id || null,
-    filamento,
-    costo_material: Number(item.costo_material) || 0,
-    costo_mano_obra: Number(item.costo_mano_obra) || 0,
-    costo_depreciacion: Number(item.costo_amortizacion) || 0,
-    costo_energia: Number(item.costo_energia) || 0,
-    costo_mantenimiento: Number(item.costo_mantenimiento) || 0,
-    subtotal_directo: subtotalDirecto,
-    proporcion_pct: proporcionPct * 100,
-    costo_fallos_pieza: costoFallosPieza,
-    costo_base_pieza: costoBasePieza,
-    monto_ganancia_pieza: montoGananciaPieza,
-  };
+export interface VoucherPolicy {
+  label: string;
+  text: string;
 }
 
-export async function getCotizacionPorToken(token: string): Promise<CotizacionPublica | null> {
-  try {
-    const { data, error } = await supabase
-      .from("cotizaciones")
-      .select(`
-        id,
-        created_at,
-        codigo_cotizacion,
-        cliente_nombre,
-        cliente_contacto,
-        costo_directo_total,
-        costo_indirecto_total,
-        costo_fallos_total,
-        costo_diseno_total,
-        subtotal_costo_base,
-        monto_ganancia,
-        monto_impuesto,
-        precio_final,
-        margen_ganancia_aplicado_pct,
-        estado,
-        notas,
-        imagen_referencia_url,
-        voucher_data,
-        empresa:empresas (
-          id,
-          nombre_comercial,
-          razon_social,
-          logo_url,
-          garantia,
-          sitio_web,
-          nit,
-          whatsapp,
-          direccion_fiscal,
-          instagram,
-          facebook,
-          ciudad,
-          ubicacion_url
-        ),
-        cotizacion_items (
-          id,
-          nombre_pieza,
-          cantidad,
-          peso_gramos,
-          tiempo_impresion_horas,
-          tiempo_preparacion_minutos,
-          tiempo_postprocesado_minutos,
-          costo_material,
-          costo_energia,
-          costo_amortizacion,
-          costo_mantenimiento,
-          costo_mano_obra,
-          costo_subtotal_item,
-          filamento_id,
-          filamentos (
-            id,
-            material,
-            color,
-            color_hex,
-            marca
-          )
-        )
-      `)
-      .eq("token_publico", token)
-      .single();
-
-    if (error || !data) {
-      console.error("[Voucher Service] Error al consultar la cotización:", error);
-      return null;
-    }
-
-    const voucherDataObj = (data.voucher_data as VoucherData) || null;
-    const imagenCotizacion = data.imagen_referencia_url || voucherDataObj?.productImageUri || null;
-
-    const costoDirectoTotal = Number(data.costo_directo_total) || 0;
-    const costoFallosTotal = Number(data.costo_fallos_total) || 0;
-    const montoGananciaTotal = Number(data.monto_ganancia) || 0;
-    const montoImpuestoTotal = Number(data.monto_impuesto) || 0;
-
-    const rawItems = (data.cotizacion_items as unknown as DBCotizacionItem[]) || [];
-    const piezasMapeadas = rawItems.map((item) =>
-      mapearPiezaItem(
-        item,
-        costoDirectoTotal,
-        costoFallosTotal,
-        montoGananciaTotal,
-        montoImpuestoTotal,
-        imagenCotizacion
-      )
-    );
-
-    const rawEmpresa = (Array.isArray(data.empresa) ? data.empresa[0] : data.empresa) as DBEmpresa | null;
-    const empresaMapeada: EmpresaInfo | null = rawEmpresa
-      ? {
-          id: rawEmpresa.id,
-          nombre: rawEmpresa.nombre_comercial || rawEmpresa.razon_social || "Empresa",
-          nombre_comercial: rawEmpresa.nombre_comercial,
-          razon_social: rawEmpresa.razon_social,
-          logo_url: rawEmpresa.logo_url,
-          garantia: rawEmpresa.garantia,
-          sitio_web: rawEmpresa.sitio_web,
-          nit: rawEmpresa.nit,
-          telefono: rawEmpresa.whatsapp || null,
-          whatsapp_url: rawEmpresa.whatsapp ? `https://wa.me/${rawEmpresa.whatsapp}` : null,
-          direccion: rawEmpresa.direccion_fiscal || null,
-          ciudad: rawEmpresa.ciudad || null,
-          instagram_url: rawEmpresa.instagram || null,
-          facebook_url: rawEmpresa.facebook || null,
-          ubicacion_url: rawEmpresa.ubicacion_url || null,
-        }
-      : null;
-
-    return {
-      id: data.id,
-      creado_en: data.created_at,
-      codigo_cotizacion: data.codigo_cotizacion ? String(data.codigo_cotizacion) : null,
-      precio_final: Number(data.precio_final) || 0,
-      monto_impuesto: data.monto_impuesto ? Number(data.monto_impuesto) : null,
-      costo_diseno_total: Number(data.costo_diseno_total) || 0,
-      costo_directo_total: costoDirectoTotal,
-      costo_indirecto_total: Number(data.costo_indirecto_total) || 0,
-      costo_fallos_total: costoFallosTotal,
-      subtotal_costo_base: Number(data.subtotal_costo_base) || 0,
-      monto_ganancia: montoGananciaTotal,
-      margen_ganancia_aplicado_pct: Number(data.margen_ganancia_aplicado_pct) || 0,
-      cliente_nombre: data.cliente_nombre || null,
-      cliente_contacto: data.cliente_contacto || null,
-      estado: data.estado || null,
-      notas: data.notas || null,
-      imagen_referencia_url: imagenCotizacion,
-      piezas: piezasMapeadas,
-      empresa: empresaMapeada,
-      voucher_data: voucherDataObj,
-    };
-  } catch (err) {
-    console.error("[Voucher Service] Excepción no controlada:", err);
-    return null;
-  }
+export interface VoucherData {
+  documentTitle?: string | null;
+  companyTagline?: string | null;
+  validityLabel?: string | null;
+  footerNote?: string | null;
+  logoUri?: string | null;
+  productImageUri?: string | null;
+  policies?: VoucherPolicy[] | null;
+  garantiaDias?: number | null;
+  notasLegales?: string[] | null;
 }
 
-//src/features/voucher/components/VoucherPublico.tsx
-"use client";
-
-import { useMemo } from "react";
-import type { VoucherPublicoProps, Tema } from "../types/voucher.types";
-import { TEMAS } from "../constants/voucherConstants";
-import { useVoucherFlujo } from "../hooks/useVoucherFlujo";
-import { useVoucherCotizacion } from "../hooks/useVoucherCotizacion";
-import { mapearPiezasAFilasVoucher } from "../utils/voucherFormatters";
-
-import { VoucherHeader } from "./VoucherHeader";
-import { VoucherTabsPiezas } from "./VoucherTabsPiezas";
-import { VoucherHeroCard } from "./VoucherHeroCard";
-import { VoucherTablaResumen } from "./VoucherTablaResumen";
-import { VoucherPoliticas } from "./VoucherPoliticas";
-import { VoucherAccionesIniciales } from "./VoucherAccionesIniciales";
-import { VoucherSeleccionOpciones } from "./VoucherSeleccionOpciones";
-import { TicketComprobante } from "./ticket/TicketComprobante";
-import { VoucherUbicacionLocal } from "./VoucherUbicacionLocal";
-import { VoucherFooter } from "./VoucherFooter";
-
-export function VoucherPublico({
-  cotizacion,
-  onAceptarPedido,
-  onCancelarPedido,
-  clienteNombre,
-  clienteDocumento,
-  clienteTelefono,
-  atendidoPor,
-  numeroPedido,
-  qrPagoUri,
-  ubicacionLocal,
-  ubicacionMapsUrl,
-  onSubirComprobante,
-  onConfirmarPedidoEfectivo,
-  whatsappUrl,
-  tiktokUrl,
-  instagramUrl,
-  facebookUrl,
-}: VoucherPublicoProps) {
-  const flujo = useVoucherFlujo({
-    cotizacion,
-    onAceptarPedidoSuccess: onAceptarPedido,
-    onSubirComprobante,
-    onConfirmarPedidoEfectivo,
-  });
-
-  const datos = useVoucherCotizacion({
-    cotizacion,
-    tabActivo: flujo.tabActivo,
-    tipoEntrega: flujo.tipoEntrega,
-    numeroPedido,
-    clienteNombre,
-    ubicacionLocal,
-    ubicacionMapsUrl,
-    qrPagoUri,
-    fechaEmision: flujo.fechaEmision,
-  });
-
-  const filasMapeadas = useMemo(() => {
-    return mapearPiezasAFilasVoucher(cotizacion.piezas ?? []);
-  }, [cotizacion.piezas]);
-
-  const temaClave = (flujo.tema as Tema) || "rosa";
-  const estiloTema = (TEMAS[temaClave] ?? TEMAS.rosa) as React.CSSProperties;
-  const piezaSeleccionadaId =
-    flujo.tabActivo !== "general" ? flujo.tabActivo : null;
-
-  // Una vez que el pago fue verificado por el admin, el pedido queda "cerrado"
-  // para el cliente: ya no necesita ver dónde pagar/recoger, porque ya pagó.
-  const mostrarUbicacionLocal =
-    flujo.metodoPago === "efectivo" &&
-    flujo.pedidoConfirmadoEfectivo &&
-    !flujo.comprobanteVerificado;
-
-  return (
-    <div
-      className="min-h-screen bg-slate-50 px-4 py-8 text-slate-800 antialiased"
-      style={estiloTema}
-    >
-      <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        {/* Cabecera del Voucher */}
-        <VoucherHeader
-          empresaNombre={datos.empresaNombre}
-          empresa={datos.empresa ?? undefined}
-          voucherData={datos.voucherData ?? undefined}
-          creadoEn={cotizacion.creado_en}
-          tema={temaClave}
-          onAlternarTema={flujo.alternarTema}
-        />
-
-        <div className="mt-4 h-1 w-full rounded-full bg-[var(--brand)]" />
-
-        {/* Pestañas de Piezas */}
-        <VoucherTabsPiezas
-          tabs={datos.tabs}
-          tabActivo={flujo.tabActivo}
-          onCambiarTab={flujo.setTabActivo}
-          visible={(cotizacion.piezas?.length ?? 0) > 1}
-        />
-
-        {/* Tarjeta Destacada */}
-        <VoucherHeroCard
-          cotizacion={cotizacion}
-          piezaSeleccionadaId={piezaSeleccionadaId}
-        />
-
-        {/* Tabla Desglose */}
-        <VoucherTablaResumen
-          filas={datos.filasVista ?? filasMapeadas}
-          costoDisenoTotal={cotizacion.costo_diseno_total}
-          subtotal={datos.subtotalVista}
-          montoImpuesto={datos.montoImpuestoVista}
-          total={datos.totalVista}
-        />
-
-        {/* Políticas y Garantía */}
-        <VoucherPoliticas politicas={datos.politicas} />
-
-        {/* Botones de Acción Inicial */}
-        {!flujo.pedidoAceptado && (
-          <VoucherAccionesIniciales
-            onCancelar={onCancelarPedido}
-            onAceptar={flujo.handleAceptarPedido}
-            loading={flujo.isCreatingPedido}
-          />
-        )}
-
-        {/* Flujo de Confirmación y Ticket */}
-        {flujo.pedidoAceptado && (
-          <div className="mt-6 space-y-4">
-            <VoucherSeleccionOpciones
-              visible={!flujo.seleccionCompleta}
-              tipoEntrega={flujo.tipoEntrega}
-              metodoPago={flujo.metodoPago}
-              onSeleccionarEntrega={flujo.handleSeleccionarEntrega}
-              onSeleccionarPago={flujo.handleSeleccionarPago}
-            />
-
-            {flujo.seleccionCompleta && (
-              <>
-                <TicketComprobante
-                  empresa={datos.empresa ?? undefined}
-                  empresaNombre={datos.empresaNombre}
-                  voucherData={datos.voucherData ?? undefined}
-                  codigoPedido={datos.codigoPedido}
-                  fechaEmision={flujo.fechaEmision}
-                  atendidoPor={atendidoPor}
-                  nombreCliente={datos.nombreClienteMostrado}
-                  clienteDocumento={clienteDocumento}
-                  clienteTelefono={clienteTelefono}
-                  tipoEntrega={flujo.tipoEntrega}
-                  filasComprobante={datos.filasComprobante ?? filasMapeadas}
-                  subtotalOrden={datos.subtotalOrden}
-                  montoImpuestoOrden={datos.montoImpuestoOrden}
-                  costoEnvio={datos.costoEnvio}
-                  costoDiseno={cotizacion.costo_diseno_total}
-                  totalConEnvio={datos.totalConEnvio}
-                  montoAnticipo={datos.montoAnticipo}
-                  montoSaldo={datos.montoSaldo}
-                  metodoPago={flujo.metodoPago}
-                  verificado={flujo.comprobanteVerificado}
-                  qrImagenSrc={datos.qrImagenSrc}
-                  comprobanteArchivo={flujo.comprobanteArchivo}
-                  pedidoConfirmadoEfectivo={flujo.pedidoConfirmadoEfectivo}
-                  direccionLocal={datos.direccionLocal}
-                  notasLegales={datos.notasLegales}
-                  fileInputRef={
-                    flujo.fileInputRef as React.RefObject<HTMLInputElement>
-                  }
-                  onSeleccionarComprobante={flujo.handleSeleccionarComprobante}
-                  onComprobanteChange={flujo.handleComprobanteChange}
-                  onConfirmarEfectivo={flujo.handleConfirmarEfectivo}
-                  onCambiarOpciones={flujo.handleCambiarOpciones}
-                />
-
-                {/* Punto de Pago y Recojo: solo mientras el pago en efectivo
-                    sigue pendiente de verificación. Una vez verificado, se oculta. */}
-                {mostrarUbicacionLocal && (
-                  <VoucherUbicacionLocal
-                    direccion={datos.direccionLocal}
-                    ubicacionUrl={datos.direccionMapsUrl ?? undefined}
-                  />
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Pie de Página */}
-        <VoucherFooter
-          footerNote={datos.voucherData?.footerNote}
-          sitioWeb={datos.empresa?.sitio_web}
-          whatsappUrl={
-            whatsappUrl ?? datos.empresa?.whatsapp_url ?? datos.empresa?.telefono
-          }
-          tiktokUrl={tiktokUrl ?? datos.empresa?.tiktok_url}
-          facebookUrl={facebookUrl ?? datos.empresa?.facebook_url}
-          instagramUrl={instagramUrl ?? datos.empresa?.instagram_url}
-        />
-      </div>
-    </div>
-  );
+export interface CotizacionPublica {
+  id: string;
+  creado_en: string;
+  codigo_cotizacion?: string | null;
+  precio_final: number;
+  monto_impuesto?: number | null;
+  porcentaje_impuesto?: number | null;
+  costo_diseno_total: number;
+  costo_directo_total: number;
+  costo_indirecto_total: number;
+  costo_fallos_total: number;
+  subtotal_costo_base: number;
+  monto_ganancia: number;
+  margen_ganancia_aplicado_pct: number;
+  cliente_nombre?: string | null;
+  cliente_contacto?: string | null;
+  estado?: string | null;
+  notas?: string | null;
+  imagen_referencia_url?: string | null;
+  piezas: PiezaDetalle[];
+  empresa?: EmpresaInfo | null;
+  voucher_data?: VoucherData | null;
 }
 
-
-
-
-
-// src/features/voucher/components/ticket/TicketComprobante.tsx
-
-import { RefreshCw, Ticket } from "lucide-react";
-import type { TicketComprobanteProps } from "../../types/voucher.types";
-import { TicketEncabezadoEmpresa } from "./TicketEncabezadoEmpresa";
-import { TicketInfoPedido } from "./TicketInfoPedido";
-import { TicketClienteEntrega } from "./TicketClienteEntrega";
-import { TicketDetalleTrabajo } from "./TicketDetalleTrabajo";
-import { TicketTotalesAnticipo } from "./TicketTotalesAnticipo";
-import { TicketPagoQR } from "./TicketPagoQR";
-import { TicketPagoEfectivo } from "./TicketPagoEfectivo";
-import { TicketNotasLegales } from "./TicketNotasLegales";
-import { TicketCodigoBarras } from "./TicketCodigoBarras";
-import { TicketAcciones } from "./TicketAcciones";
-
-export function TicketComprobante(props: TicketComprobanteProps) {
-  const fechaObj =
-    typeof props.fechaEmision === "string"
-      ? new Date(props.fechaEmision)
-      : props.fechaEmision ?? new Date();
-
-  const nombreEmpresaSeguro = props.empresaNombre ?? props.empresa?.nombre ?? "EMPRESA";
-
-  const pagoVerificado = Boolean(props.verificado);
-
-  // Recálculo preventivo a nivel de comprobante para consistencia global
-  const numPiezas = Number(props.subtotalOrden) || 0;
-  const numEnvio = Number(props.costoEnvio) || 0;
-  const numDiseno = Number(props.costoDiseno) || 0;
-  const totalCalculado = numPiezas + numEnvio + numDiseno;
-  
-  const porcentajeAnticipo = Number(50);
-  const anticipoCalculado = (totalCalculado * porcentajeAnticipo) / 100;
-  const saldoCalculado = totalCalculado - anticipoCalculado;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-900">
-          <Ticket className="h-4 w-4 text-[var(--brand)]" />
-          3. Tu comprobante de pedido
-        </p>
-
-        {!pagoVerificado && (
-          <button
-            type="button"
-            onClick={props.onCambiarOpciones}
-            className="flex items-center gap-1 text-xs font-semibold text-[var(--brand)] hover:underline"
-          >
-            <RefreshCw className="h-3 w-3" />
-            Cambiar opciones
-          </button>
-        )}
-      </div>
-
-      <div className="relative mx-auto max-w-md space-y-4">
-        <div className="overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-slate-200">
-          <TicketEncabezadoEmpresa
-            empresaNombre={nombreEmpresaSeguro}
-            empresa={props.empresa ?? undefined}
-            voucherData={props.voucherData ?? undefined}
-          />
-
-          <TicketInfoPedido
-            codigoPedido={props.codigoPedido ?? "S/N"}
-            fechaEmision={fechaObj}
-            atendidoPor={props.atendidoPor}
-          />
-
-          <TicketClienteEntrega
-            nombreCliente={props.nombreCliente ?? ""}
-            clienteDocumento={props.clienteDocumento}
-            clienteTelefono={props.clienteTelefono}
-            tipoEntrega={props.tipoEntrega}
-          />
-
-          <TicketDetalleTrabajo filas={props.filasComprobante} />
-
-          <TicketTotalesAnticipo
-            metodoEnvio={props.tipoEntrega ?? undefined}
-            costoEnvio={props.costoEnvio}
-            costoDiseno={props.costoDiseno}
-            subtotalOrden={props.subtotalOrden}
-            montoAnticipo={anticipoCalculado}
-            montoSaldo={saldoCalculado}
-            porcentajeAnticipo={porcentajeAnticipo}
-          />
-
-          <TicketPagoQR
-            visible={props.metodoPago === "qr"}
-            qrImagenSrc={props.qrImagenSrc ?? ""}
-            comprobanteArchivo={props.comprobanteArchivo}
-            verificado={pagoVerificado}
-          />
-
-          <TicketPagoEfectivo
-            visible={props.metodoPago === "efectivo"}
-            pedidoConfirmadoEfectivo={props.pedidoConfirmadoEfectivo}
-            verificado={pagoVerificado}
-            montoAnticipo={anticipoCalculado}
-            empresaNombre={nombreEmpresaSeguro}
-            direccionLocal={props.direccionLocal ?? ""}
-          />
-
-          <TicketNotasLegales notas={props.notasLegales ?? []} />
-          <TicketCodigoBarras codigoPedido={props.codigoPedido ?? "S/N"} />
-        </div>
-
-        {!pagoVerificado && (
-          <TicketAcciones
-            metodoPago={props.metodoPago}
-            comprobanteArchivo={props.comprobanteArchivo}
-            pedidoConfirmadoEfectivo={props.pedidoConfirmadoEfectivo}
-            fileInputRef={props.fileInputRef}
-            onComprobanteChange={props.onComprobanteChange}
-            onSeleccionarComprobante={props.onSeleccionarComprobante}
-            onConfirmarEfectivo={props.onConfirmarEfectivo}
-          />
-        )}
-      </div>
-    </div>
-  );
+export interface FilaVoucher {
+  pieza: PiezaDetalle;
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  total: number;
+  material: string;
+  color: string;
+  colorHex?: string | null;
+  materialColor: string;
+  detalleTecnico?: string | null;
 }
 
+// ==========================================
+// Props de Componentes
+// ==========================================
 
-import { CheckCircle2, Clock, QrCode } from "lucide-react";
+export interface VoucherPublicoProps {
+  cotizacion: CotizacionPublica;
+  onAceptarPedido?: () => void;
+  onCancelarPedido?: () => void;
+  clienteNombre?: string;
+  clienteDocumento?: string;
+  clienteTelefono?: string;
+  atendidoPor?: string;
+  numeroPedido?: string;
+  qrPagoUri?: string;
+  ubicacionLocal?: string;
+  ubicacionMapsUrl?: string;
+  onSubirComprobante?: (archivo: File) => void;
+  onConfirmarPedidoEfectivo?: () => void;
+  instagramUrl?: string;
+  whatsappUrl?: string;
+  facebookUrl?: string;  tiktokUrl?: string;
+}
 
-interface TicketPagoQRProps {
-  visible: boolean;
-  qrImagenSrc: string;
+export interface VoucherTablaResumenProps {
+  filas: FilaVoucher[];
+  costoDisenoTotal?: number | null;
+  subtotal: number;
+  montoImpuesto: number;
+  total: number;
+}
+
+export interface VoucherHeaderProps {
+  empresaNombre?: string | null;
+  empresa?: EmpresaInfo | null;
+  voucherData?: VoucherData | null;
+  creadoEn?: string;
+  tema: Tema;
+  onAlternarTema: () => void;
+}
+
+export interface TicketComprobanteProps {
+  empresa?: EmpresaInfo | null;
+  empresaNombre?: string | null;
+  voucherData?: VoucherData | null;
+  codigoPedido?: string | null;
+  fechaEmision?: Date | string;
+  atendidoPor?: string;
+  nombreCliente?: string | null;
+  clienteDocumento?: string;
+  clienteTelefono?: string;
+  tipoEntrega: TipoEntrega | null;
+  filasComprobante: FilaVoucher[];
+  subtotalOrden: number;
+  montoImpuestoOrden: number;
+  costoEnvio: number;
+  costoDiseno?: number | string;
+  totalConEnvio: number;
+  montoAnticipo: number;
+  montoSaldo: number;
+  metodoPago: MetodoPago | null;
+  qrImagenSrc?: string | null;
   comprobanteArchivo: File | null;
-  verificado: boolean;
+  pedidoConfirmadoEfectivo: boolean;
+  verificado?: boolean; // Trazabilidad para la auditoría de pago
+  direccionLocal?: string | null;
+  notasLegales?: string[] | null;
+  fileInputRef: RefObject<HTMLInputElement>;
+  onSeleccionarComprobante: () => void;
+  onComprobanteChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  onConfirmarEfectivo: () => void;
+  onCambiarOpciones: () => void;
 }
 
-export function TicketPagoQR({
+
+// src/features/voucher/components/VoucherSeleccionOpciones.tsx
+
+import { Banknote, QrCode, Store, Truck } from "lucide-react";
+import type { MetodoPago, TipoEntrega } from "../types/voucher.types";
+import { COSTO_ENVIO_DOMICILIO } from "../constants/voucherConstants";
+import { formatBs } from "../utils/voucherFormatters";
+
+interface VoucherSeleccionOpcionesProps {
+  visible: boolean;
+  tipoEntrega: TipoEntrega | null;
+  metodoPago: MetodoPago | null;
+  onSeleccionarEntrega: (t: TipoEntrega) => void;
+  onSeleccionarPago: (m: MetodoPago) => void;
+}
+
+export function VoucherSeleccionOpciones({
   visible,
-  qrImagenSrc,
-  comprobanteArchivo,
-  verificado,
-}: TicketPagoQRProps) {
+  tipoEntrega,
+  metodoPago,
+  onSeleccionarEntrega,
+  onSeleccionarPago,
+}: VoucherSeleccionOpcionesProps) {
   if (!visible) return null;
 
   return (
-    <div className="border-t border-dashed border-slate-200 px-5 py-4">
-      <p className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-900">
-        <QrCode className="h-4 w-4 text-[var(--brand)]" />
-        Pago con QR
-      </p>
+    <div className="rounded-xl border border-slate-200 p-5 space-y-5 bg-white">
+      {/* Paso 1: Entrega */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+          <Truck className="h-4 w-4 text-[var(--brand)]" />
+          1. Elige el tipo de entrega
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => onSeleccionarEntrega("recoger")}
+            className={`rounded-xl border p-4 text-left transition flex items-start gap-3 ${
+              tipoEntrega === "recoger"
+                ? "border-[var(--brand)] bg-[var(--brand-light)] ring-1 ring-[var(--brand)]"
+                : "border-slate-200 hover:border-[var(--brand)]/40 hover:bg-slate-50"
+            }`}
+          >
+            <Store className={`h-5 w-5 mt-0.5 ${tipoEntrega === "recoger" ? "text-[var(--brand)]" : "text-slate-400"}`} />
+            <div>
+              <p className="text-sm font-bold text-slate-900">Recoger en el local</p>
+              <p className="mt-0.5 text-xs text-slate-500">Sin costo adicional</p>
+            </div>
+          </button>
 
-      {verificado ? (
-        <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-emerald-700">
-          <CheckCircle2 className="h-5 w-5 shrink-0" />
-          <p className="text-sm font-semibold">
-            Pago ya confirmado con éxito. No necesitas hacer nada más.
-          </p>
+          <button
+            type="button"
+            onClick={() => onSeleccionarEntrega("domicilio")}
+            className={`rounded-xl border p-4 text-left transition flex items-start gap-3 ${
+              tipoEntrega === "domicilio"
+                ? "border-[var(--brand)] bg-[var(--brand-light)] ring-1 ring-[var(--brand)]"
+                : "border-slate-200 hover:border-[var(--brand)]/40 hover:bg-slate-50"
+            }`}
+          >
+            <Truck className={`h-5 w-5 mt-0.5 ${tipoEntrega === "domicilio" ? "text-[var(--brand)]" : "text-slate-400"}`} />
+            <div>
+              <p className="text-sm font-bold text-slate-900">Envío a domicilio</p>
+              <p className="mt-0.5 text-xs text-slate-500">+ {formatBs(COSTO_ENVIO_DOMICILIO)} al pedido</p>
+            </div>
+          </button>
         </div>
-      ) : !comprobanteArchivo ? (
-        <div className="flex flex-col items-center gap-2">
-          <img
-            src={qrImagenSrc}
-            alt="Código QR de pago"
-            className="h-44 w-44 rounded-lg border border-slate-200"
-          />
-          <p className="text-center text-xs text-slate-500">
-            Escanea el código, realiza el pago y sube tu comprobante.
-          </p>
+      </div>
+
+      <div className="border-t border-slate-100" />
+
+      {/* Paso 2: Pago */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+          <Banknote className="h-4 w-4 text-[var(--brand)]" />
+          2. Elige el método de pago
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => onSeleccionarPago("efectivo")}
+            className={`rounded-xl border p-4 text-left transition flex items-start gap-3 ${
+              metodoPago === "efectivo"
+                ? "border-[var(--brand)] bg-[var(--brand-light)] ring-1 ring-[var(--brand)]"
+                : "border-slate-200 hover:border-[var(--brand)]/40 hover:bg-slate-50"
+            }`}
+          >
+            <Banknote className={`h-5 w-5 mt-0.5 ${metodoPago === "efectivo" ? "text-[var(--brand)]" : "text-slate-400"}`} />
+            <div>
+              <p className="text-sm font-bold text-slate-900">Efectivo</p>
+              <p className="mt-0.5 text-xs text-slate-500">Pago del anticipo en el local</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSeleccionarPago("qr")}
+            className={`rounded-xl border p-4 text-left transition flex items-start gap-3 ${
+              metodoPago === "qr"
+                ? "border-[var(--brand)] bg-[var(--brand-light)] ring-1 ring-[var(--brand)]"
+                : "border-slate-200 hover:border-[var(--brand)]/40 hover:bg-slate-50"
+            }`}
+          >
+            <QrCode className={`h-5 w-5 mt-0.5 ${metodoPago === "qr" ? "text-[var(--brand)]" : "text-slate-400"}`} />
+            <div>
+              <p className="text-sm font-bold text-slate-900">QR</p>
+              <p className="mt-0.5 text-xs text-slate-500">Transferencia bancaria inmediata</p>
+            </div>
+          </button>
         </div>
-      ) : (
-        <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-amber-700">
-          <Clock className="h-5 w-5 shrink-0 animate-pulse" />
-          <p className="text-sm font-semibold">
-            Comprobante subido correctamente. Espera mientras verificamos tu pago.
-          </p>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
 
 
-si tengo todos estos codigos explicame detalladamente por que no esta recupearando correctamente mi imgen_QR de mi configuracion empresa para que pueda usar esa imagen QR para que me realicen los pagos asi que dime que archivo stengo que modifiacar si tengo estos datos de mi base de datos: 
+
 [
   {
     "tabla": "clientes",
@@ -1335,608 +1309,7 @@ si tengo todos estos codigos explicame detalladamente por que no esta recupearan
     "es_pk": "NO",
     "referencia_tabla_fk": "profiles",
     "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "empresa_id",
-    "tipo_dato": "uuid",
-    "es_pk": "SI",
-    "referencia_tabla_fk": "empresas",
-    "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "costo_kwh",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "costo_mano_obra_hora",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "costo_operativo_fijo_mensual",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "horas_laborables_mes",
-    "tipo_dato": "integer",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "tasa_fallo_defecto_pct",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "impuesto_pct",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "margen_ganancia_defecto_pct",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "moneda",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "qr_pago_url",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "qr_pago_titular",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "configuracion_empresa",
-    "columna": "updated_at",
-    "tipo_dato": "timestamp with time zone",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "id",
-    "tipo_dato": "uuid",
-    "es_pk": "SI",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "cotizacion_id",
-    "tipo_dato": "uuid",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "cotizaciones",
-    "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "impresora_id",
-    "tipo_dato": "uuid",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "impresoras",
-    "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "filamento_id",
-    "tipo_dato": "uuid",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "filamentos",
-    "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "nombre_pieza",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "cantidad",
-    "tipo_dato": "integer",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "peso_gramos",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "tiempo_impresion_horas",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "tiempo_preparacion_minutos",
-    "tipo_dato": "integer",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "tiempo_postprocesado_minutos",
-    "tipo_dato": "integer",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "costo_material",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "costo_energia",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "costo_amortizacion",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "costo_mantenimiento",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "costo_mano_obra",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "costo_subtotal_item",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizacion_items",
-    "columna": "created_at",
-    "tipo_dato": "timestamp with time zone",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "id",
-    "tipo_dato": "uuid",
-    "es_pk": "SI",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "creado_por",
-    "tipo_dato": "uuid",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "profiles",
-    "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "creado_por",
-    "tipo_dato": "uuid",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "profiles",
-    "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "codigo_cotizacion",
-    "tipo_dato": "integer",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "cliente_nombre",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "cliente_contacto",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "costo_directo_total",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "costo_indirecto_total",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "costo_fallos_total",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "subtotal_costo_base",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "monto_ganancia",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "monto_impuesto",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "precio_final",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "margen_ganancia_aplicado_pct",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "estado",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "notas",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "created_at",
-    "tipo_dato": "timestamp with time zone",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "cliente_id",
-    "tipo_dato": "uuid",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "clientes",
-    "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "empresa_id",
-    "tipo_dato": "uuid",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "empresas",
-    "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "token_publico",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "voucher_data",
-    "tipo_dato": "jsonb",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "imagen_referencia_url",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "cotizaciones",
-    "columna": "costo_diseno_total",
-    "tipo_dato": "numeric",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresa_miembros",
-    "columna": "id",
-    "tipo_dato": "uuid",
-    "es_pk": "SI",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresa_miembros",
-    "columna": "empresa_id",
-    "tipo_dato": "uuid",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "empresas",
-    "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "empresa_miembros",
-    "columna": "user_id",
-    "tipo_dato": "uuid",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "profiles",
-    "referencia_columna_fk": "id"
-  },
-  {
-    "tabla": "empresa_miembros",
-    "columna": "rol",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresa_miembros",
-    "columna": "estado",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresa_miembros",
-    "columna": "created_at",
-    "tipo_dato": "timestamp with time zone",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "id",
-    "tipo_dato": "uuid",
-    "es_pk": "SI",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "creado_por",
-    "tipo_dato": "uuid",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "logo_url",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "nombre_comercial",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "nit",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "razon_social",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "direccion_fiscal",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "ciudad",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "whatsapp",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "instagram",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "facebook",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "sitio_web",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "garantia",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "created_at",
-    "tipo_dato": "timestamp with time zone",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "updated_at",
-    "tipo_dato": "timestamp with time zone",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "es_singleton",
-    "tipo_dato": "boolean",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
-  },
-  {
-    "tabla": "empresas",
-    "columna": "ubicacion_url",
-    "tipo_dato": "text",
-    "es_pk": "NO",
-    "referencia_tabla_fk": "-",
-    "referencia_columna_fk": "-"
   }
 ]
 
-
-dame mis codigos en los que tengo que hacer las modificaciones para poder cargar correctamente mi imagen_QR de mi configuracion_empresa para los cobros QR 
+si tengo estos codigos y estos datos completos quiero que me des las modificacioens necesarias que tengo que ahcer para que cuando me selecione envio_domicilio quiero que debajo me aparezacan debajo de mi boton de secionar envio_tipo los campos para llenar la direccion que me escriba su direccion y tambien me salga la un boton que diga: registrar ubicacion actual o algo asi y quiero que si presiona esa boton me tome la ubicacion real del cliente para tomar las coordenadas y con esas coordenadas guardar su ubicacion exacta con url en im base de datos en mi direccion_url o algo asi para que pueda usar esa url de coordenadas en google maps para envio a domicilio mas preciso y profesional dame mi codigo con esas mejoras profesionales

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type {
   TipoEntrega,
@@ -30,6 +31,8 @@ export function useVoucherFlujo({
   onSubirComprobante,
   onConfirmarPedidoEfectivo,
 }: UseVoucherFlujoProps) {
+  const router = useRouter();
+
   const [tema, setTema] = useState<string>("rosa");
   const [tabActivo, setTabActivo] = useState<string>("general");
   const [pedidoAceptado, setPedidoAceptado] = useState<boolean>(false);
@@ -39,6 +42,12 @@ export function useVoucherFlujo({
 
   const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega | null>(null);
   const [metodoPago, setMetodoPago] = useState<MetodoPago | null>(null);
+
+  // Estados de Dirección y Geolocalización para Domicilio
+  const [direccionDomicilio, setDireccionDomicilio] = useState<string>("");
+  const [ubicacionUrl, setUbicacionUrl] = useState<string | null>(null);
+  const [obteniendoUbicacion, setObteniendoUbicacion] = useState<boolean>(false);
+  const [errorUbicacion, setErrorUbicacion] = useState<string | null>(null);
 
   const [comprobanteArchivo, setComprobanteArchivo] = useState<File | null>(null);
   const [pedidoConfirmadoEfectivo, setPedidoConfirmadoEfectivo] = useState<boolean>(false);
@@ -52,6 +61,7 @@ export function useVoucherFlujo({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fechaEmision = new Date();
 
+  // 1. Cargar estado inicial del pedido y su último pago
   useEffect(() => {
     let activo = true;
 
@@ -66,11 +76,19 @@ export function useVoucherFlujo({
         setTipoEntrega(pedidoExistente.envio_tipo as TipoEntrega);
       }
 
+      if (pedidoExistente.envio_direccion) {
+        setDireccionDomicilio(pedidoExistente.envio_direccion);
+      }
+
+      if (pedidoExistente.envio_ubicacion_url) {
+        setUbicacionUrl(pedidoExistente.envio_ubicacion_url);
+      }
+
       const ultimoPago = await getUltimoPagoPedidoService(pedidoExistente.id);
       if (ultimoPago && activo) {
         setMetodoPago(ultimoPago.metodo as MetodoPago);
         setPagoId(ultimoPago.id);
-        setComprobanteVerificado(ultimoPago.verificado);
+        setComprobanteVerificado(Boolean(ultimoPago.verificado));
         if (ultimoPago.metodo === "efectivo") setPedidoConfirmadoEfectivo(true);
       }
     })();
@@ -78,14 +96,14 @@ export function useVoucherFlujo({
     return () => {
       activo = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cotizacion.id]);
 
+  // 2. Suscripción Realtime: Cambios en la verificación del PAGO
   useEffect(() => {
     if (!pagoId) return;
 
     const channel = supabase
-      .channel(`pedido_pago_${pagoId}`)
+      .channel(`realtime-pago-${pagoId}`)
       .on(
         "postgres_changes",
         {
@@ -95,9 +113,11 @@ export function useVoucherFlujo({
           filter: `id=eq.${pagoId}`,
         },
         (payload) => {
-          if (payload.new?.verificado) {
-            setComprobanteVerificado(true);
+          if (payload.new && typeof payload.new.verificado !== "undefined") {
+            setComprobanteVerificado(Boolean(payload.new.verificado));
           }
+          // Refresca la ruta en Next.js para sincronizar datos procesados en el servidor
+          router.refresh();
         }
       )
       .subscribe();
@@ -105,11 +125,45 @@ export function useVoucherFlujo({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [pagoId]);
+  }, [pagoId, router]);
+
+  // 3. Suscripción Realtime: Cambios directos en la tabla PEDIDOS
+  useEffect(() => {
+    if (!pedidoId) return;
+
+    const channel = supabase
+      .channel(`realtime-pedido-${pedidoId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "pedidos",
+          filter: `id=eq.${pedidoId}`,
+        },
+        (payload) => {
+          if (payload.new?.envio_tipo) {
+            setTipoEntrega(payload.new.envio_tipo as TipoEntrega);
+          }
+          if (payload.new?.envio_direccion) {
+            setDireccionDomicilio(payload.new.envio_direccion);
+          }
+          if (payload.new?.envio_ubicacion_url) {
+            setUbicacionUrl(payload.new.envio_ubicacion_url);
+          }
+          router.refresh();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [pedidoId, router]);
 
   const alternarTema = () => setTema((prev) => (prev === "rosa" ? "morado" : "rosa"));
 
-  // 1. Creación básica del pedido
+  // Creación básica del pedido
   const handleAceptarPedido = async () => {
     if (isCreatingPedido || pedidoId) return;
 
@@ -143,7 +197,7 @@ export function useVoucherFlujo({
     }
   };
 
-  // 2. Selección de entrega
+  // Selección de entrega
   const handleSeleccionarEntrega = async (tipo: TipoEntrega) => {
     setTipoEntrega(tipo);
     if (!pedidoId) return;
@@ -167,9 +221,65 @@ export function useVoucherFlujo({
     }
   };
 
-  // 3. Selección de método de pago
+  // Selección de método de pago
   const handleSeleccionarPago = (metodo: MetodoPago) => {
     setMetodoPago(metodo);
+  };
+
+  // Guardar Dirección escrita manualmente
+  const handleGuardarDireccion = async (direccion: string) => {
+    setDireccionDomicilio(direccion);
+    if (!pedidoId) return;
+
+    try {
+      setIsUpdatingPedido(true);
+      await actualizarOpcionesPedidoService(pedidoId, { envioDireccion: direccion });
+    } catch (error) {
+      console.error("Error al guardar la dirección:", error);
+    } finally {
+      setIsUpdatingPedido(false);
+    }
+  };
+
+  // Geolocalización (Google Maps URL)
+  const handleUsarUbicacionActual = () => {
+    if (!("geolocation" in navigator)) {
+      setErrorUbicacion("Tu navegador no soporta geolocalización.");
+      return;
+    }
+
+    setObteniendoUbicacion(true);
+    setErrorUbicacion(null);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+        setUbicacionUrl(mapsUrl);
+
+        if (pedidoId) {
+          try {
+            setIsUpdatingPedido(true);
+            await actualizarOpcionesPedidoService(pedidoId, { envioUbicacionUrl: mapsUrl });
+          } catch (error) {
+            console.error("Error al guardar la ubicación:", error);
+            setErrorUbicacion("No se pudo guardar la ubicación. Intenta nuevamente.");
+          } finally {
+            setIsUpdatingPedido(false);
+          }
+        }
+        setObteniendoUbicacion(false);
+      },
+      (geoError) => {
+        setObteniendoUbicacion(false);
+        if (geoError.code === geoError.PERMISSION_DENIED) {
+          setErrorUbicacion("Debes permitir el acceso a tu ubicación para usar esta opción.");
+        } else {
+          setErrorUbicacion("No se pudo obtener tu ubicación. Intenta nuevamente.");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   const handleSeleccionarComprobante = () => {
@@ -177,8 +287,7 @@ export function useVoucherFlujo({
     fileInputRef.current?.click();
   };
 
-  // 4. Comprobante QR subido → registrarPagoPedidoService hace upsert
-  // (crea el anticipo la primera vez, lo actualiza si ya existía)
+  // Comprobante QR subido → registrarPagoPedidoService (upsert)
   const handleComprobanteChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -190,8 +299,6 @@ export function useVoucherFlujo({
       return;
     }
 
-    // Evita que un doble-click dispare dos registros mientras el primero
-    // todavía no terminó de guardarse.
     if (isRegistrandoPago) {
       e.target.value = "";
       return;
@@ -217,7 +324,7 @@ export function useVoucherFlujo({
       });
 
       setPagoId(pago.id);
-      setComprobanteVerificado(false);
+      setComprobanteVerificado(Boolean(pago.verificado));
     } catch (error) {
       console.error("Error al registrar el pago QR:", error);
       alert("No se pudo registrar tu comprobante. Intenta nuevamente.");
@@ -227,7 +334,7 @@ export function useVoucherFlujo({
     }
   };
 
-  // 5. Confirmación de pago en efectivo (upsert, mismo criterio)
+  // Confirmación de pago en efectivo (upsert)
   const handleConfirmarEfectivo = async () => {
     if (!pedidoId || !tipoEntrega || isRegistrandoPago) return;
 
@@ -243,7 +350,7 @@ export function useVoucherFlujo({
       });
 
       setPagoId(pago.id);
-      setComprobanteVerificado(false);
+      setComprobanteVerificado(Boolean(pago.verificado));
       setPedidoConfirmadoEfectivo(true);
       onConfirmarPedidoEfectivo?.();
     } catch (error) {
@@ -255,17 +362,14 @@ export function useVoucherFlujo({
     }
   };
 
-  // 6. Cambiar opciones: YA NO borra el pago. Solo resetea la UI para que el
-  // cliente vuelva a elegir envio_tipo/metodo_pago; al volver a confirmar
-  // (efectivo) o subir comprobante (QR), registrarPagoPedidoService
-  // encuentra el anticipo existente y lo ACTUALIZA en la misma fila.
+  // Cambiar opciones sin borrar el registro persistido
   const handleCambiarOpciones = () => {
     setTipoEntrega(null);
     setMetodoPago(null);
     setPedidoConfirmadoEfectivo(false);
     setComprobanteArchivo(null);
     setComprobanteVerificado(false);
-    // pagoId se mantiene: sigue siendo el mismo registro que se actualizará
+    setErrorUbicacion(null);
   };
 
   const seleccionCompleta = Boolean(tipoEntrega && metodoPago);
@@ -277,12 +381,15 @@ export function useVoucherFlujo({
     setTabActivo,
     pedidoAceptado,
     pedidoId,
+    pagoId,
     isCreatingPedido,
     isUpdatingPedido,
     tipoEntrega,
     metodoPago,
-    handleSeleccionarEntrega,
-    handleSeleccionarPago,
+    direccionDomicilio,
+    ubicacionUrl,
+    obteniendoUbicacion,
+    errorUbicacion,
     comprobanteArchivo,
     pedidoConfirmadoEfectivo,
     comprobanteVerificado,
@@ -290,6 +397,10 @@ export function useVoucherFlujo({
     fechaEmision,
     fileInputRef,
     handleAceptarPedido,
+    handleSeleccionarEntrega,
+    handleSeleccionarPago,
+    handleGuardarDireccion,
+    handleUsarUbicacionActual,
     handleSeleccionarComprobante,
     handleComprobanteChange,
     handleConfirmarEfectivo,

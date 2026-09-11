@@ -1,4 +1,5 @@
 // src/features/voucher/components/VoucherHeroCard.tsx
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { Layers, Package, Palette, Maximize2, X } from "lucide-react";
@@ -21,7 +22,7 @@ export function VoucherHeroCard({
   cotizacion,
   piezaSeleccionadaId,
 }: VoucherHeroCardProps) {
-  const [modalAbierto, setModalAbierto] = useState(false);
+  const [imagenAmpliada, setImagenAmpliada] = useState<string | null>(null);
 
   const piezaSeleccionada = piezaSeleccionadaId
     ? cotizacion.piezas.find((p) => p.id === piezaSeleccionadaId)
@@ -33,35 +34,40 @@ export function VoucherHeroCard({
     ? piezaSeleccionada.precio_total_pieza
     : cotizacion.precio_final;
 
-  const imgPieza = obtenerUrlValida(piezaSeleccionada?.imagen_url);
-  const imgCotizacion = obtenerUrlValida(cotizacion.imagen_referencia_url);
-  const imgFallbackPieza = obtenerUrlValida(
-    cotizacion.piezas.find((p) => obtenerUrlValida(p.imagen_url))?.imagen_url
+  // Todas las fotos disponibles (una por pieza) — para el collage de "General"
+  const imagenesPiezas = cotizacion.piezas
+    .map((p) => ({
+      id: p.id,
+      nombre: p.nombre_pieza,
+      url: obtenerUrlValida(p.imagen_url),
+    }))
+    .filter((p): p is { id: string; nombre: string; url: string } => Boolean(p.url));
+
+  const imagenPiezaSeleccionada = piezaSeleccionada
+    ? obtenerUrlValida(piezaSeleccionada.imagen_url)
+    : null;
+
+  const cerrarModal = useCallback(() => setImagenAmpliada(null), []);
+
+  const manejarKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Escape") cerrarModal();
+    },
+    [cerrarModal],
   );
 
-  const imagenProducto: string | null = piezaSeleccionada
-    ? (imgPieza || imgCotizacion)
-    : (imgCotizacion || imgFallbackPieza);
-
-  const manejarKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      setModalAbierto(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (modalAbierto) {
+    if (imagenAmpliada) {
       window.addEventListener("keydown", manejarKeyDown);
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "unset";
     }
-
     return () => {
       window.removeEventListener("keydown", manejarKeyDown);
       document.body.style.overflow = "unset";
     };
-  }, [modalAbierto, manejarKeyDown]);
+  }, [imagenAmpliada, manejarKeyDown]);
 
   let materialTxt = "No especificado";
   let colorTxt = "No especificado";
@@ -76,16 +82,16 @@ export function VoucherHeroCard({
       new Set(
         cotizacion.piezas
           .map((p) => p.filamento?.material)
-          .filter((m): m is string => Boolean(m))
-      )
+          .filter((m): m is string => Boolean(m)),
+      ),
     );
 
     const coloresUnicos = Array.from(
       new Set(
         cotizacion.piezas
           .map((p) => p.filamento?.color)
-          .filter((c): c is string => Boolean(c))
-      )
+          .filter((c): c is string => Boolean(c)),
+      ),
     );
 
     if (materialesUnicos.length === 1) {
@@ -96,9 +102,7 @@ export function VoucherHeroCard({
 
     if (coloresUnicos.length === 1) {
       colorTxt = coloresUnicos[0];
-      const primerHex = cotizacion.piezas.find(
-        (p) => p.filamento?.color_hex
-      );
+      const primerHex = cotizacion.piezas.find((p) => p.filamento?.color_hex);
       colorHex = primerHex?.filamento?.color_hex || null;
     } else if (coloresUnicos.length > 1) {
       colorTxt = "Varios colores";
@@ -108,21 +112,59 @@ export function VoucherHeroCard({
   return (
     <>
       <div className="mt-6 flex flex-col items-center gap-6 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm md:flex-row md:items-stretch md:p-6">
-        {imagenProducto ? (
+        {/* ── Bloque de imagen ── */}
+        {esGeneral ? (
+          imagenesPiezas.length > 0 ? (
+            <div className="grid w-full grid-cols-2 gap-2 md:w-1/2">
+              {imagenesPiezas.slice(0, 4).map((img, idx) => {
+                const esOverflow = idx === 3 && imagenesPiezas.length > 4;
+                return (
+                  <div
+                    key={img.id}
+                    onClick={() => setImagenAmpliada(img.url)}
+                    className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-slate-200/70 bg-slate-50 shadow-inner transition-all hover:border-slate-300"
+                    title={img.nombre}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.url}
+                      alt={img.nombre}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
+                    {esOverflow && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-lg font-bold text-white">
+                        +{imagenesPiezas.length - 3}
+                      </div>
+                    )}
+                    <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold text-white opacity-0 backdrop-blur-md transition-opacity group-hover:opacity-100">
+                      <Maximize2 className="h-3 w-3" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex aspect-square w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/80 text-xs font-semibold text-slate-400 md:w-1/2">
+              <div className="mb-2 rounded-full bg-slate-100 p-3.5 text-slate-400">
+                <Package className="h-8 w-8" />
+              </div>
+              <span>Sin vista previa disponible</span>
+            </div>
+          )
+        ) : imagenPiezaSeleccionada ? (
           <div
-            onClick={() => setModalAbierto(true)}
+            onClick={() => setImagenAmpliada(imagenPiezaSeleccionada)}
             className="group relative aspect-square w-full cursor-pointer overflow-hidden rounded-xl border border-slate-200/70 bg-slate-50 shadow-inner transition-all hover:border-slate-300 md:w-1/2"
             title="Haz clic para ampliar la imagen"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={imagenProducto}
-              alt="Vista previa del modelo 3D"
+              src={imagenPiezaSeleccionada}
+              alt={piezaSeleccionada?.nombre_pieza || "Vista previa de la pieza"}
               className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
-
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60 transition-opacity duration-300 group-hover:opacity-80" />
-
             <div className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-lg bg-black/65 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md transition-transform group-hover:scale-105">
               <Maximize2 className="h-3.5 w-3.5" />
               <span>Ampliar</span>
@@ -186,9 +228,10 @@ export function VoucherHeroCard({
         </div>
       </div>
 
-      {modalAbierto && imagenProducto && (
+      {/* Modal: siempre muestra UNA sola imagen, la que se haya clicado */}
+      {imagenAmpliada && (
         <div
-          onClick={() => setModalAbierto(false)}
+          onClick={cerrarModal}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md transition-opacity animate-in fade-in duration-200"
         >
           <div
@@ -197,7 +240,7 @@ export function VoucherHeroCard({
           >
             <button
               type="button"
-              onClick={() => setModalAbierto(false)}
+              onClick={cerrarModal}
               className="absolute right-4 top-4 z-10 rounded-full bg-black/60 p-2.5 text-white backdrop-blur-sm transition-transform hover:scale-110 hover:bg-black/80"
               title="Cerrar (Esc)"
             >
@@ -206,7 +249,7 @@ export function VoucherHeroCard({
 
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={imagenProducto}
+              src={imagenAmpliada}
               alt="Vista previa ampliada del modelo 3D"
               className="max-h-[85vh] w-full rounded-xl object-contain"
             />

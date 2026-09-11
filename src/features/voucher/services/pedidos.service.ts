@@ -24,7 +24,7 @@ const CHECKLIST_DEFAULT_LABELS = [
 ];
 
 // ==========================================
-// Creación (Corregida de Forma Profesional)
+// Creación
 // ==========================================
 
 export async function crearPedidoPendienteService(dto: CrearPedidoDesdeCotizacionDTO) {
@@ -125,7 +125,9 @@ export async function getPedidoPorCotizacionIdService(
 ): Promise<PedidoExistente | null> {
   const { data, error } = await supabase
     .from("pedidos")
-    .select("id, estado, envio_tipo, envio_costo, pago_total, pago_monto_cobrado, pago_estado")
+    .select(
+      "id, estado, envio_tipo, envio_costo, envio_direccion, envio_ubicacion_url, pago_total, pago_monto_cobrado, pago_estado"
+    )
     .eq("cotizacion_id", cotizacionId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -155,7 +157,7 @@ export async function getUltimoPagoPedidoService(pedidoId: string): Promise<Ulti
 }
 
 // ==========================================
-// Actualizar opciones de entrega
+// Actualizar opciones de entrega y ubicación
 // ==========================================
 
 export async function actualizarOpcionesPedidoService(
@@ -166,13 +168,18 @@ export async function actualizarOpcionesPedidoService(
   if (dto.envioTipo !== undefined) updatePayload.envio_tipo = dto.envioTipo;
   if (dto.envioCosto !== undefined) updatePayload.envio_costo = dto.envioCosto;
   if (dto.pagoTotal !== undefined) updatePayload.pago_total = dto.pagoTotal;
+  if (dto.envioDireccion !== undefined) updatePayload.envio_direccion = dto.envioDireccion;
+  if (dto.envioUbicacionUrl !== undefined) updatePayload.envio_ubicacion_url = dto.envioUbicacionUrl;
+
   if (Object.keys(updatePayload).length === 0) return null;
 
   const { data: dataArray, error } = await supabase
     .from("pedidos")
     .update(updatePayload)
     .eq("id", pedidoId)
-    .select("id, estado, envio_tipo, envio_costo, pago_total");
+    .select(
+      "id, estado, envio_tipo, envio_costo, envio_direccion, envio_ubicacion_url, pago_total"
+    );
 
   if (error) throw new Error(`Error en base de datos: ${error.message}`);
   if (!dataArray || dataArray.length === 0) {
@@ -189,12 +196,6 @@ export async function actualizarOpcionesPedidoService(
 
 // ==========================================
 // Registrar / actualizar pago (anticipo) — UPSERT
-//
-// Regla de negocio: solo puede existir UN registro de tipo "anticipo" por
-// pedido. Si el cliente presiona "Subir comprobante", "Reemplazar" o
-// "Confirmar pedido" más de una vez (doble click, refresco de página, o
-// cambia de método de pago/entrega y vuelve a confirmar), se actualiza la
-// misma fila en vez de insertar una nueva.
 // ==========================================
 
 export async function registrarPagoPedidoService(pedidoId: string, dto: RegistrarPagoPedidoDTO) {
@@ -212,8 +213,7 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
     throw new Error(`No se pudo verificar el pago existente: ${errorBuscar.message}`);
   }
 
-  // 2. Si ya fue verificado por el administrador, el pedido queda cerrado:
-  // el cliente ya no puede modificarlo desde el voucher web.
+  // 2. Si ya fue verificado por el administrador, el pedido queda cerrado
   if (pagoExistente?.verificado) {
     throw new Error(
       "Este pedido ya tiene un pago verificado y no puede modificarse desde aquí."
@@ -224,7 +224,7 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
   const esActualizacion = Boolean(pagoExistente);
 
   if (pagoExistente) {
-    // 3a. Ya existe -> actualizar la misma fila (nuevo método, nuevo comprobante, etc.)
+    // 3a. Ya existe -> actualizar la misma fila
     const { data, error } = await supabase
       .from("pedido_pagos")
       .update({
@@ -278,10 +278,6 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
 
 // ==========================================
 // Anular último pago
-// (se conserva por si se necesita en otro flujo administrativo, pero el
-// voucher web YA NO la llama al presionar "Cambiar opciones": ahora
-// simplemente se actualiza el mismo registro cuando el cliente vuelve a
-// confirmar)
 // ==========================================
 
 export async function anularUltimoPagoPedidoService(pedidoId: string) {

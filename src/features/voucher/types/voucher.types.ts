@@ -24,6 +24,8 @@ export interface ActualizarOpcionesPedidoDTO {
   envioTipo?: TipoEntrega | string | null;
   envioCosto?: number | null;
   pagoTotal?: number | null;
+  envioDireccion?: string | null;
+  envioUbicacionUrl?: string | null;
 }
 
 export interface RegistrarPagoPedidoDTO {
@@ -38,6 +40,8 @@ export interface PedidoExistente {
   estado: string;
   envio_tipo: string | null;
   envio_costo: number | null;
+  envio_direccion: string | null;
+  envio_ubicacion_url: string | null;
   pago_total: number | null;
   pago_monto_cobrado: number | null;
   pago_estado: string | null;
@@ -189,7 +193,8 @@ export interface VoucherPublicoProps {
   onConfirmarPedidoEfectivo?: () => void;
   instagramUrl?: string;
   whatsappUrl?: string;
-  facebookUrl?: string;  tiktokUrl?: string;
+  facebookUrl?: string;
+  tiktokUrl?: string;
 }
 
 export interface VoucherTablaResumenProps {

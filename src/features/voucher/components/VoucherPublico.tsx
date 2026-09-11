@@ -1,4 +1,3 @@
-//src/features/voucher/components/VoucherPublico.tsx
 "use client";
 
 import { useMemo } from "react";
@@ -66,8 +65,16 @@ export function VoucherPublico({
   const piezaSeleccionadaId =
     flujo.tabActivo !== "general" ? flujo.tabActivo : null;
 
-  // Una vez que el pago fue verificado por el admin, el pedido queda "cerrado"
-  // para el cliente: ya no necesita ver dónde pagar/recoger, porque ya pagó.
+  // Validación estricta para envío a domicilio
+  const domicilioValido =
+    flujo.tipoEntrega === "domicilio"
+      ? Boolean(flujo.direccionDomicilio?.trim()) && Boolean(flujo.ubicacionUrl)
+      : true;
+
+  // La selección de opciones solo está lista si eligió entrega, método de pago y completó los datos requeridos
+  const seleccionCompleta =
+    flujo.seleccionCompleta && domicilioValido;
+
   const mostrarUbicacionLocal =
     flujo.metodoPago === "efectivo" &&
     flujo.pedidoConfirmadoEfectivo &&
@@ -130,14 +137,20 @@ export function VoucherPublico({
         {flujo.pedidoAceptado && (
           <div className="mt-6 space-y-4">
             <VoucherSeleccionOpciones
-              visible={!flujo.seleccionCompleta}
+              visible={flujo.pedidoAceptado && !seleccionCompleta}
               tipoEntrega={flujo.tipoEntrega}
               metodoPago={flujo.metodoPago}
               onSeleccionarEntrega={flujo.handleSeleccionarEntrega}
               onSeleccionarPago={flujo.handleSeleccionarPago}
+              direccionDomicilio={flujo.direccionDomicilio}
+              onGuardarDireccion={flujo.handleGuardarDireccion}
+              ubicacionUrl={flujo.ubicacionUrl}
+              obteniendoUbicacion={flujo.obteniendoUbicacion}
+              errorUbicacion={flujo.errorUbicacion}
+              onUsarUbicacionActual={flujo.handleUsarUbicacionActual}
             />
 
-            {flujo.seleccionCompleta && (
+            {seleccionCompleta && (
               <>
                 <TicketComprobante
                   empresa={datos.empresa ?? undefined}
@@ -174,8 +187,6 @@ export function VoucherPublico({
                   onCambiarOpciones={flujo.handleCambiarOpciones}
                 />
 
-                {/* Punto de Pago y Recojo: solo mientras el pago en efectivo
-                    sigue pendiente de verificación. Una vez verificado, se oculta. */}
                 {mostrarUbicacionLocal && (
                   <VoucherUbicacionLocal
                     direccion={datos.direccionLocal}

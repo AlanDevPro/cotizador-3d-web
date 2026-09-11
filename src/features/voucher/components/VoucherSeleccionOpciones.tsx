@@ -1,6 +1,5 @@
-// src/features/voucher/components/VoucherSeleccionOpciones.tsx
-
-import { Banknote, QrCode, Store, Truck } from "lucide-react";
+import { useState } from "react";
+import { AlertCircle, Banknote, LocateFixed, MapPin, QrCode, Store, Truck } from "lucide-react";
 import type { MetodoPago, TipoEntrega } from "../types/voucher.types";
 import { COSTO_ENVIO_DOMICILIO } from "../constants/voucherConstants";
 import { formatBs } from "../utils/voucherFormatters";
@@ -11,6 +10,12 @@ interface VoucherSeleccionOpcionesProps {
   metodoPago: MetodoPago | null;
   onSeleccionarEntrega: (t: TipoEntrega) => void;
   onSeleccionarPago: (m: MetodoPago) => void;
+  direccionDomicilio: string;
+  onGuardarDireccion: (direccion: string) => void;
+  ubicacionUrl: string | null;
+  obteniendoUbicacion: boolean;
+  errorUbicacion: string | null;
+  onUsarUbicacionActual: () => void;
 }
 
 export function VoucherSeleccionOpciones({
@@ -19,11 +24,22 @@ export function VoucherSeleccionOpciones({
   metodoPago,
   onSeleccionarEntrega,
   onSeleccionarPago,
+  direccionDomicilio,
+  onGuardarDireccion,
+  ubicacionUrl,
+  obteniendoUbicacion,
+  errorUbicacion,
+  onUsarUbicacionActual,
 }: VoucherSeleccionOpcionesProps) {
+  const [direccionLocal, setDireccionLocal] = useState(direccionDomicilio);
+
   if (!visible) return null;
 
+  const faltaDireccion = tipoEntrega === "domicilio" && !direccionLocal.trim();
+  const faltaUbicacion = tipoEntrega === "domicilio" && !ubicacionUrl;
+
   return (
-    <div className="rounded-xl border border-slate-200 p-5 space-y-5 bg-white">
+    <div className="rounded-xl border border-slate-200 p-5 space-y-5 bg-white shadow-xs">
       {/* Paso 1: Entrega */}
       <div>
         <p className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
@@ -63,6 +79,84 @@ export function VoucherSeleccionOpciones({
             </div>
           </button>
         </div>
+
+        {/* Campos de dirección — solo si eligió domicilio */}
+        {tipoEntrega === "domicilio" && (
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-slate-600" />
+                Escribe tu dirección
+              </label>
+              <textarea
+                value={direccionLocal}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDireccionLocal(val);
+                  onGuardarDireccion(val.trim());
+                }}
+                onBlur={() => {
+                  if (direccionLocal.trim()) {
+                    onGuardarDireccion(direccionLocal.trim());
+                  }
+                }}
+                rows={2}
+                placeholder="Ej: Av. Siempre Viva #123, entre calles..., zona..., referencia..."
+                className={`mt-1.5 w-full rounded-lg border px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 ${
+                  faltaDireccion
+                    ? "border-red-400 focus:border-red-500 focus:ring-red-500"
+                    : "border-slate-300 focus:border-[var(--brand)] focus:ring-[var(--brand)]"
+                }`}
+              />
+
+              {/* Advertencia si no escribió dirección */}
+              {faltaDireccion && (
+                <p className="mt-1 flex items-center gap-1 text-xs font-medium text-red-600">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  Debes ingresar tu dirección escrita para continuar con el pedido.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={onUsarUbicacionActual}
+                disabled={obteniendoUbicacion}
+                className="w-full flex items-center justify-center gap-2 rounded-lg border border-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-[var(--brand)] transition hover:bg-[var(--brand-light)] disabled:opacity-60"
+              >
+                <LocateFixed className={`h-4 w-4 ${obteniendoUbicacion ? "animate-pulse" : ""}`} />
+                {obteniendoUbicacion ? "Obteniendo tu ubicación..." : "Registrar ubicación actual"}
+              </button>
+
+              {/* Advertencia si falta la ubicación GPS en tiempo real */}
+              {faltaUbicacion && !errorUbicacion && (
+                <p className="mt-1.5 flex items-center gap-1 text-xs font-medium text-red-600">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  Debes registrar tu ubicación en tiempo real para continuar con el pedido.
+                </p>
+              )}
+
+              {errorUbicacion && (
+                <p className="mt-1 flex items-center gap-1 text-xs font-medium text-red-600">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  {errorUbicacion}
+                </p>
+              )}
+
+              {ubicacionUrl && !errorUbicacion && (
+                <a
+                  href={ubicacionUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1.5 block text-xs font-medium text-emerald-600 hover:underline"
+                >
+                  ✓ Ubicación registrada — ver en Google Maps
+                </a>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="border-t border-slate-100" />
