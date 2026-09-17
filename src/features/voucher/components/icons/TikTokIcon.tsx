@@ -1,6 +1,7 @@
 // src/features/voucher/components/icons/TikTokIcon.tsx
+import React from "react";
 
-export function TikTokIcon({ className = "h-4 w-4" }: { className?: string }) {
+export function TikTokIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"

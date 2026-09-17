@@ -24,6 +24,20 @@ const CHECKLIST_DEFAULT_LABELS = [
 ];
 
 // ==========================================
+// Utilidad: resolver tipo/monto de pago QR según elección del cliente
+// ==========================================
+
+export function resolverPagoQR(
+  tipoMontoPago: "anticipo" | "total" | null,
+  totalPedido: number
+): { tipo: "anticipo" | "pago_final"; monto: number; porcentaje: number } {
+  const porcentaje = tipoMontoPago === "total" ? 100 : 50;
+  const monto = Math.round(((totalPedido * porcentaje) / 100) * 100) / 100;
+  const tipo: "anticipo" | "pago_final" = tipoMontoPago === "total" ? "pago_final" : "anticipo";
+  return { tipo, monto, porcentaje };
+}
+
+// ==========================================
 // Creación
 // ==========================================
 
@@ -157,7 +171,7 @@ export async function getUltimoPagoPedidoService(pedidoId: string): Promise<Ulti
 }
 
 // ==========================================
-// Actualizar opciones de entrega y ubicación
+// Actualizar opciones de entrega, ubicación y % de anticipo
 // ==========================================
 
 export async function actualizarOpcionesPedidoService(
@@ -168,6 +182,7 @@ export async function actualizarOpcionesPedidoService(
   if (dto.envioTipo !== undefined) updatePayload.envio_tipo = dto.envioTipo;
   if (dto.envioCosto !== undefined) updatePayload.envio_costo = dto.envioCosto;
   if (dto.pagoTotal !== undefined) updatePayload.pago_total = dto.pagoTotal;
+  if (dto.pagoAnticipoPct !== undefined) updatePayload.pago_anticipo_pct = dto.pagoAnticipoPct;
   if (dto.envioDireccion !== undefined) updatePayload.envio_direccion = dto.envioDireccion;
   if (dto.envioUbicacionUrl !== undefined) updatePayload.envio_ubicacion_url = dto.envioUbicacionUrl;
 
@@ -178,7 +193,7 @@ export async function actualizarOpcionesPedidoService(
     .update(updatePayload)
     .eq("id", pedidoId)
     .select(
-      "id, estado, envio_tipo, envio_costo, envio_direccion, envio_ubicacion_url, pago_total"
+      "id, estado, envio_tipo, envio_costo, envio_direccion, envio_ubicacion_url, pago_total, pago_anticipo_pct"
     );
 
   if (error) throw new Error(`Error en base de datos: ${error.message}`);
@@ -195,13 +210,12 @@ export async function actualizarOpcionesPedidoService(
 }
 
 // ==========================================
-// Registrar / actualizar pago (anticipo) — UPSERT
+// Registrar / actualizar pago — UPSERT
 // ==========================================
 
 export async function registrarPagoPedidoService(pedidoId: string, dto: RegistrarPagoPedidoDTO) {
   const montoARegistrar = dto.montoEsperado ?? 0;
 
-  // 1. Buscar si ya existe un anticipo para este pedido
   const { data: pagoExistente, error: errorBuscar } = await supabase
     .from("pedido_pagos")
     .select("id, verificado")
@@ -213,7 +227,6 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
     throw new Error(`No se pudo verificar el pago existente: ${errorBuscar.message}`);
   }
 
-  // 2. Si ya fue verificado por el administrador, el pedido queda cerrado
   if (pagoExistente?.verificado) {
     throw new Error(
       "Este pedido ya tiene un pago verificado y no puede modificarse desde aquí."
@@ -224,7 +237,6 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
   const esActualizacion = Boolean(pagoExistente);
 
   if (pagoExistente) {
-    // 3a. Ya existe -> actualizar la misma fila
     const { data, error } = await supabase
       .from("pedido_pagos")
       .update({
@@ -241,7 +253,6 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
     if (error) throw new Error(`No se pudo actualizar el pago: ${error.message}`);
     pago = data;
   } else {
-    // 3b. No existe -> crear el primer registro de anticipo
     const { data, error } = await supabase
       .from("pedido_pagos")
       .insert({
@@ -267,11 +278,10 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
   await supabase.from("pedido_eventos").insert({
     pedido_id: pedidoId,
     texto: esActualizacion
-      ? `Anticipo actualizado vía ${dto.metodo}.${detalleEsperado}`
-      : `Anticipo registrado vía ${dto.metodo}.${detalleEsperado}`,
+      ? `Pago (${dto.tipo}) actualizado vía ${dto.metodo}.${detalleEsperado}`
+      : `Pago (${dto.tipo}) registrado vía ${dto.metodo}.${detalleEsperado}`,
   });
 
-  // Recalcula y actualiza pago_estado y pago_monto_cobrado en la tabla pedidos
   await actualizarEstadoPagoPedidoService(pedidoId);
 
   return pago;
@@ -302,7 +312,7 @@ export async function anularUltimoPagoPedidoService(pedidoId: string) {
 
   await supabase.from("pedido_eventos").insert({
     pedido_id: pedidoId,
-    texto: "Anticipo anulado por cambio de opciones del cliente.",
+    texto: "Pago anulado por cambio de opciones del cliente.",
   });
 
   await actualizarEstadoPagoPedidoService(pedidoId);
@@ -328,13 +338,11 @@ export async function actualizarEstadoPagoPedidoService(pedidoId: string) {
 
   if (errorPedido) throw new Error(`No se pudo leer el pedido: ${errorPedido.message}`);
 
-  // Suma total registrada (incluye pagos verificados y anticipos declarados por el cliente)
   const montoReportado = (pagos ?? []).reduce(
     (acc, p) => acc + (Number(p.monto) || 0),
     0
   );
 
-  // Suma exclusiva de pagos verificados formalmente por el admin
   const montoVerificado = (pagos ?? [])
     .filter((p) => p.verificado)
     .reduce((acc, p) => acc + (Number(p.monto) || 0), 0);
@@ -351,9 +359,9 @@ export async function actualizarEstadoPagoPedidoService(pedidoId: string) {
 
   const { error: errorUpdate } = await supabase
     .from("pedidos")
-    .update({ 
-      pago_monto_cobrado: montoReportado, 
-      pago_estado: pagoEstado 
+    .update({
+      pago_monto_cobrado: montoReportado,
+      pago_estado: pagoEstado,
     })
     .eq("id", pedidoId);
 

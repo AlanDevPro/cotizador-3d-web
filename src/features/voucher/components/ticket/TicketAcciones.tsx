@@ -1,12 +1,18 @@
 import { CheckCircle2, RefreshCw, Upload } from "lucide-react";
 import type { MetodoPago } from "../../types/voucher.types";
+import type { TipoMontoPago } from "../VoucherSeleccionOpciones";
 
 interface TicketAccionesProps {
   metodoPago: MetodoPago | null;
+  /** Monto elegido con QR ("anticipo" o "total"); se reenvía al confirmar el comprobante */
+  tipoMontoPago?: TipoMontoPago | null;
   comprobanteArchivo: File | null;
   pedidoConfirmadoEfectivo: boolean;
   fileInputRef: React.RefObject<HTMLInputElement>;
-  onComprobanteChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onComprobanteChange: (
+    e: React.ChangeEvent<HTMLInputElement>,
+    tipoMontoPago: TipoMontoPago | null
+  ) => void;
   onSeleccionarComprobante: () => void;
   onConfirmarEfectivo: () => void;
   onCambiarOpciones?: () => void;
@@ -14,6 +20,7 @@ interface TicketAccionesProps {
 
 export function TicketAcciones({
   metodoPago,
+  tipoMontoPago = null,
   comprobanteArchivo,
   pedidoConfirmadoEfectivo,
   fileInputRef,
@@ -22,7 +29,6 @@ export function TicketAcciones({
   onConfirmarEfectivo,
   onCambiarOpciones,
 }: TicketAccionesProps) {
-  // El usuario ya ejecutó la acción si subió el comprobante (QR) o confirmó el pedido (Efectivo)
   const accionRealizada =
     (metodoPago === "qr" && Boolean(comprobanteArchivo)) ||
     (metodoPago === "efectivo" && pedidoConfirmadoEfectivo);
@@ -34,11 +40,10 @@ export function TicketAcciones({
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={onComprobanteChange}
+        onChange={(e) => onComprobanteChange(e, tipoMontoPago)}
       />
 
       <div className="flex items-center justify-between gap-3 pt-2">
-        {/* LADO IZQUIERDO: Botón para cambiar opciones si aún NO se ha confirmado ni subido comprobante */}
         {!accionRealizada && onCambiarOpciones ? (
           <button
             type="button"
@@ -52,7 +57,6 @@ export function TicketAcciones({
           <div />
         )}
 
-        {/* LADO DERECHO: Botón de acción principal (Subir / Reemplazar Comprobante o Confirmar Efectivo) */}
         <div className="flex items-center gap-3">
           {metodoPago === "qr" && (
             <button

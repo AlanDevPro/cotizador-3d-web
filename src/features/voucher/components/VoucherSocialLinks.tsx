@@ -24,36 +24,32 @@ export function VoucherSocialLinks({
       label: "WhatsApp",
       url: construirUrlRedSocial("whatsapp", whatsappUrl),
       Icon: WhatsAppIcon,
-      // Verde oficial de WhatsApp (#25D366)
-      styleClass:
-        "text-[#25D366] bg-[#25D366]/10 border-[#25D366]/20 hover:bg-[#25D366] hover:text-white hover:border-[#25D366]",
+      filledBg: "bg-[#128c7e]",
+      tooltipBg: "bg-[#128c7e]",
     },
     {
       id: "instagram",
       label: "Instagram",
       url: construirUrlRedSocial("instagram", instagramUrl),
       Icon: InstagramIcon,
-      // Rosa/Magenta oficial de Instagram (#E4405F)
-      styleClass:
-        "text-[#E4405F] bg-[#E4405F]/10 border-[#E4405F]/20 hover:bg-[#E4405F] hover:text-white hover:border-[#E4405F]",
+      filledBg: "bg-gradient-to-tr from-[#405de6] via-[#b33ab4] to-[#fd1f1f]",
+      tooltipBg: "bg-[#c135b4]",
     },
     {
       id: "facebook",
       label: "Facebook",
       url: construirUrlRedSocial("facebook", facebookUrl),
       Icon: FacebookIcon,
-      // Azul oficial de Facebook (#1877F2)
-      styleClass:
-        "text-[#1877F2] bg-[#1877F2]/10 border-[#1877F2]/20 hover:bg-[#1877F2] hover:text-white hover:border-[#1877F2]",
+      filledBg: "bg-[#1877F2]",
+      tooltipBg: "bg-[#1877F2]",
     },
     {
       id: "tiktok",
       label: "TikTok",
       url: construirUrlRedSocial("tiktok", tiktokUrl),
       Icon: TikTokIcon,
-      // Negro/Oscuro oficial de TikTok (#000000)
-      styleClass:
-        "text-slate-900 bg-slate-100 border-slate-200 hover:bg-black hover:text-white hover:border-black",
+      filledBg: "bg-black",
+      tooltipBg: "bg-black",
     },
   ].flatMap((item) =>
     item.url
@@ -63,7 +59,8 @@ export function VoucherSocialLinks({
             label: string;
             url: string;
             Icon: React.ComponentType<{ className?: string }>;
-            styleClass: string;
+            filledBg: string;
+            tooltipBg: string;
           },
         ]
       : []
@@ -72,20 +69,34 @@ export function VoucherSocialLinks({
   if (redes.length === 0) return null;
 
   return (
-    <div className="flex items-center justify-center gap-2 sm:justify-end">
-      {redes.map(({ id, url, label, Icon, styleClass }) => (
-        <a
-          key={id}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={label}
-          title={label}
-          className={`flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition-all duration-200 hover:scale-105 ${styleClass}`}
-        >
-          <Icon className="h-4.5 w-4.5" />
-        </a>
+    <ul className="flex items-center justify-center gap-3 sm:justify-end">
+      {redes.map(({ id, url, label, Icon, filledBg, tooltipBg }) => (
+        <li key={id} className="group relative list-none">
+          {/* Tooltip animado */}
+          <div
+            className={`pointer-events-none absolute left-1/2 top-[-30px] z-20 -translate-x-1/2 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-semibold text-white shadow-md opacity-0 transition-all duration-300 ease-in-out group-hover:top-[-45px] group-hover:opacity-100 ${tooltipBg}`}
+          >
+            {label}
+          </div>
+
+          {/* Botón con efecto filled */}
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={label}
+            className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-all duration-300 ease-in-out hover:border-transparent hover:text-white hover:shadow-lg"
+          >
+            {/* Div de fondo animado */}
+            <div
+              className={`absolute bottom-0 left-0 h-0 w-full transition-all duration-300 ease-in-out group-hover:h-full ${filledBg}`}
+            />
+
+            {/* Ícono dinámico */}
+            <Icon className="relative z-10 h-5 w-5 transition-colors duration-300" />
+          </a>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }

@@ -59,7 +59,7 @@ export function TicketEncabezadoEmpresa({
 
         {/* Nivel 2: Fila Inferior Centrara [Ubicación] · [Teléfono] */}
         {(empresa?.direccion || empresa?.telefono) && (
-          <div className="mt-3.5 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 rounded-lg bg-slate-50 px-3 py-1.5 text-center text-[11px] font-medium text-slate-600 border border-slate-100">
+          <div className="mt-3.5 flex flex-wrap items-center justify-center gap-x-16 gap-y-1 rounded-lg bg-slate-50 px-3 py-1.5 text-center text-[11px] font-medium text-slate-600 border border-slate-100">
             {empresa?.direccion && (
               <span className="flex items-center gap-1 truncate max-w-[200px]">
                 <MapPin className="h-3 w-3 shrink-0 text-slate-400" />
