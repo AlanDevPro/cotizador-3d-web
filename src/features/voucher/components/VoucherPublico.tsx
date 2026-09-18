@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import type { VoucherPublicoProps, Tema } from "../types/voucher.types";
+import { useMemo, useState } from "react";
+import type { VoucherPublicoProps, Tema, MetodoPago } from "../types/voucher.types";
 import { TEMAS } from "../constants/voucherConstants";
 import { useVoucherFlujo } from "../hooks/useVoucherFlujo";
 import { useVoucherCotizacion } from "../hooks/useVoucherCotizacion";
@@ -13,7 +13,7 @@ import { VoucherHeroCard } from "./VoucherHeroCard";
 import { VoucherTablaResumen } from "./VoucherTablaResumen";
 import { VoucherPoliticas } from "./VoucherPoliticas";
 import { VoucherAccionesIniciales } from "./VoucherAccionesIniciales";
-import { VoucherSeleccionOpciones } from "./VoucherSeleccionOpciones";
+import { VoucherSeleccionOpciones, type TipoMontoPago } from "./VoucherSeleccionOpciones";
 import { TicketComprobante } from "./ticket/TicketComprobante";
 import { VoucherUbicacionLocal } from "./VoucherUbicacionLocal";
 import { VoucherFooter } from "./VoucherFooter";
@@ -44,6 +44,15 @@ export function VoucherPublico({
     onConfirmarPedidoEfectivo,
   });
 
+  // Monto de pago elegido cuando el método es QR (anticipo 50% o total 100%).
+  const [tipoMontoPago, setTipoMontoPago] = useState<TipoMontoPago | null>(null);
+
+  const handleSeleccionarPago = (metodo: MetodoPago) => {
+    // Al cambiar de método de pago, reseteamos la selección del monto QR
+    setTipoMontoPago(null);
+    flujo.handleSeleccionarPago(metodo);
+  };
+
   const datos = useVoucherCotizacion({
     cotizacion,
     tabActivo: flujo.tabActivo,
@@ -65,15 +74,25 @@ export function VoucherPublico({
   const piezaSeleccionadaId =
     flujo.tabActivo !== "general" ? flujo.tabActivo : null;
 
-  // Validación estricta para envío a domicilio
+  // --- VALIDACIÓN INDEPENDIENTE Y RIGUROSA ---
+  const tieneEntrega = flujo.tipoEntrega !== null;
+
   const domicilioValido =
     flujo.tipoEntrega === "domicilio"
       ? Boolean(flujo.direccionDomicilio?.trim()) && Boolean(flujo.ubicacionUrl)
-      : true;
+      : tieneEntrega; // Para retiro en tienda ('recoger') es válido directamente si eligió la opción.
 
-  // La selección de opciones solo está lista si eligió entrega, método de pago y completó los datos requeridos
+  const tienePago = flujo.metodoPago !== null;
+
+  // Si el método es QR, exige OBLIGATORIAMENTE seleccionar 'anticipo' o 'total'
+  const montoPagoValido =
+    flujo.metodoPago === "qr"
+      ? tipoMontoPago === "anticipo" || tipoMontoPago === "total"
+      : tienePago;
+
+  // El ticket solo se mostrará cuando TODAS las condiciones obligatorias se cumplan
   const seleccionCompleta =
-    flujo.seleccionCompleta && domicilioValido;
+    tieneEntrega && domicilioValido && tienePago && montoPagoValido;
 
   const mostrarUbicacionLocal =
     flujo.metodoPago === "efectivo" &&
@@ -136,12 +155,15 @@ export function VoucherPublico({
         {/* Flujo de Confirmación y Ticket */}
         {flujo.pedidoAceptado && (
           <div className="mt-6 space-y-4">
+            {/* Permanece visible hasta que se seleccione modal de entrega + método de pago + monto QR (si aplica) */}
             <VoucherSeleccionOpciones
-              visible={flujo.pedidoAceptado && !seleccionCompleta}
+              visible={!seleccionCompleta}
               tipoEntrega={flujo.tipoEntrega}
               metodoPago={flujo.metodoPago}
+              tipoMontoPago={tipoMontoPago}
               onSeleccionarEntrega={flujo.handleSeleccionarEntrega}
-              onSeleccionarPago={flujo.handleSeleccionarPago}
+              onSeleccionarPago={handleSeleccionarPago}
+              onSeleccionarTipoMontoPago={setTipoMontoPago}
               direccionDomicilio={flujo.direccionDomicilio}
               onGuardarDireccion={flujo.handleGuardarDireccion}
               ubicacionUrl={flujo.ubicacionUrl}
@@ -172,6 +194,7 @@ export function VoucherPublico({
                   montoAnticipo={datos.montoAnticipo}
                   montoSaldo={datos.montoSaldo}
                   metodoPago={flujo.metodoPago}
+                  tipoMontoPago={tipoMontoPago}
                   verificado={flujo.comprobanteVerificado}
                   qrImagenSrc={datos.qrImagenSrc}
                   comprobanteArchivo={flujo.comprobanteArchivo}
@@ -182,7 +205,9 @@ export function VoucherPublico({
                     flujo.fileInputRef as React.RefObject<HTMLInputElement>
                   }
                   onSeleccionarComprobante={flujo.handleSeleccionarComprobante}
-                  onComprobanteChange={flujo.handleComprobanteChange}
+                  onComprobanteChange={(e) =>
+                    flujo.handleComprobanteChange(e, tipoMontoPago)
+                  }
                   onConfirmarEfectivo={flujo.handleConfirmarEfectivo}
                   onCambiarOpciones={flujo.handleCambiarOpciones}
                 />

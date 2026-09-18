@@ -39,7 +39,7 @@ export function VoucherFooter({
         )}
       </div>
 
-      {/* Redes sociales */}
+      {/* Redes sociales animadas */}
       <VoucherSocialLinks
         whatsappUrl={whatsappUrl}
         tiktokUrl={tiktokUrl}

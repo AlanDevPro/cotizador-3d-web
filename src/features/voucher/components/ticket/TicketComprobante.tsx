@@ -1,5 +1,6 @@
 import { Ticket } from "lucide-react";
 import type { TicketComprobanteProps } from "../../types/voucher.types";
+import type { TipoMontoPago } from "../VoucherSeleccionOpciones";
 import { TicketEncabezadoEmpresa } from "./TicketEncabezadoEmpresa";
 import { TicketInfoPedido } from "./TicketInfoPedido";
 import { TicketClienteEntrega } from "./TicketClienteEntrega";
@@ -11,7 +12,12 @@ import { TicketNotasLegales } from "./TicketNotasLegales";
 import { TicketCodigoBarras } from "./TicketCodigoBarras";
 import { TicketAcciones } from "./TicketAcciones";
 
-export function TicketComprobante(props: TicketComprobanteProps) {
+interface TicketComprobanteExtraProps {
+  /** Monto elegido por el cliente cuando el método es QR ("anticipo" 50% o "total" 100%) */
+  tipoMontoPago?: TipoMontoPago | null;
+}
+
+export function TicketComprobante(props: TicketComprobanteProps & TicketComprobanteExtraProps) {
   const fechaObj =
     typeof props.fechaEmision === "string"
       ? new Date(props.fechaEmision)
@@ -20,15 +26,17 @@ export function TicketComprobante(props: TicketComprobanteProps) {
   const nombreEmpresaSeguro = props.empresaNombre ?? props.empresa?.nombre ?? "EMPRESA";
   const pagoVerificado = Boolean(props.verificado);
 
-  // Recálculo preventivo a nivel de comprobante para consistencia global
   const numPiezas = Number(props.subtotalOrden) || 0;
   const numEnvio = Number(props.costoEnvio) || 0;
   const numDiseno = Number(props.costoDiseno) || 0;
   const totalCalculado = numPiezas + numEnvio + numDiseno;
-  
-  const porcentajeAnticipo = Number(50);
+
+  // El pago en efectivo siempre es anticipo 50%. Con QR el cliente eligió 50% o 100%.
+  const esPagoTotalQR = props.metodoPago === "qr" && props.tipoMontoPago === "total";
+  const porcentajeAnticipo = esPagoTotalQR ? 100 : 50;
   const anticipoCalculado = (totalCalculado * porcentajeAnticipo) / 100;
   const saldoCalculado = totalCalculado - anticipoCalculado;
+  const mostrarDesglose = !esPagoTotalQR;
 
   return (
     <div className="space-y-4">
@@ -70,6 +78,7 @@ export function TicketComprobante(props: TicketComprobanteProps) {
             montoAnticipo={anticipoCalculado}
             montoSaldo={saldoCalculado}
             porcentajeAnticipo={porcentajeAnticipo}
+            mostrarDesglose={mostrarDesglose}
           />
 
           <TicketPagoQR
@@ -83,7 +92,7 @@ export function TicketComprobante(props: TicketComprobanteProps) {
             visible={props.metodoPago === "efectivo"}
             pedidoConfirmadoEfectivo={props.pedidoConfirmadoEfectivo}
             verificado={pagoVerificado}
-            montoAnticipo={anticipoCalculado}
+            montoAnticipo={totalCalculado * 0.5}
             empresaNombre={nombreEmpresaSeguro}
             direccionLocal={props.direccionLocal ?? ""}
           />
@@ -95,6 +104,7 @@ export function TicketComprobante(props: TicketComprobanteProps) {
         {!pagoVerificado && (
           <TicketAcciones
             metodoPago={props.metodoPago}
+            tipoMontoPago={props.tipoMontoPago}
             comprobanteArchivo={props.comprobanteArchivo}
             pedidoConfirmadoEfectivo={props.pedidoConfirmadoEfectivo}
             fileInputRef={props.fileInputRef}

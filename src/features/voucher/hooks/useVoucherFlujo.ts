@@ -4,6 +4,8 @@ import { supabase } from "@/lib/supabase";
 import type {
   TipoEntrega,
   MetodoPago,
+  TipoMontoPago,
+  TipoPagoRegistro,
   CotizacionPublica,
   PiezaDetalle,
   CrearPedidoDesdeCotizacionDTO,
@@ -43,7 +45,6 @@ export function useVoucherFlujo({
   const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega | null>(null);
   const [metodoPago, setMetodoPago] = useState<MetodoPago | null>(null);
 
-  // Estados de Dirección y Geolocalización para Domicilio
   const [direccionDomicilio, setDireccionDomicilio] = useState<string>("");
   const [ubicacionUrl, setUbicacionUrl] = useState<string | null>(null);
   const [obteniendoUbicacion, setObteniendoUbicacion] = useState<boolean>(false);
@@ -55,7 +56,6 @@ export function useVoucherFlujo({
   const [pagoId, setPagoId] = useState<string | null>(null);
   const [comprobanteVerificado, setComprobanteVerificado] = useState<boolean>(false);
 
-  // Guarda contra doble-click / doble-submit mientras se registra el anticipo
   const [isRegistrandoPago, setIsRegistrandoPago] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -116,7 +116,6 @@ export function useVoucherFlujo({
           if (payload.new && typeof payload.new.verificado !== "undefined") {
             setComprobanteVerificado(Boolean(payload.new.verificado));
           }
-          // Refresca la ruta en Next.js para sincronizar datos procesados en el servidor
           router.refresh();
         }
       )
@@ -163,7 +162,6 @@ export function useVoucherFlujo({
 
   const alternarTema = () => setTema((prev) => (prev === "rosa" ? "morado" : "rosa"));
 
-  // Creación básica del pedido
   const handleAceptarPedido = async () => {
     if (isCreatingPedido || pedidoId) return;
 
@@ -197,7 +195,6 @@ export function useVoucherFlujo({
     }
   };
 
-  // Selección de entrega
   const handleSeleccionarEntrega = async (tipo: TipoEntrega) => {
     setTipoEntrega(tipo);
     if (!pedidoId) return;
@@ -221,12 +218,10 @@ export function useVoucherFlujo({
     }
   };
 
-  // Selección de método de pago
   const handleSeleccionarPago = (metodo: MetodoPago) => {
     setMetodoPago(metodo);
   };
 
-  // Guardar Dirección escrita manualmente
   const handleGuardarDireccion = async (direccion: string) => {
     setDireccionDomicilio(direccion);
     if (!pedidoId) return;
@@ -241,7 +236,6 @@ export function useVoucherFlujo({
     }
   };
 
-  // Geolocalización (Google Maps URL)
   const handleUsarUbicacionActual = () => {
     if (!("geolocation" in navigator)) {
       setErrorUbicacion("Tu navegador no soporta geolocalización.");
@@ -287,8 +281,10 @@ export function useVoucherFlujo({
     fileInputRef.current?.click();
   };
 
-  // Comprobante QR subido → registrarPagoPedidoService (upsert)
-  const handleComprobanteChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleComprobanteChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    tipoMontoPago: TipoMontoPago | null = null
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -313,14 +309,23 @@ export function useVoucherFlujo({
     try {
       setIsRegistrandoPago(true);
       setIsUpdatingPedido(true);
-      const { montoAnticipo } = calcularTotalesPedido(cotizacion.precio_final ?? 0, tipoEntrega);
+
+      const { montoAnticipo, totalConEnvio } = calcularTotalesPedido(
+        cotizacion.precio_final ?? 0,
+        tipoEntrega
+      );
+
+      const esTotal = tipoMontoPago === "total";
+      const tipoPago: TipoPagoRegistro = esTotal ? "pago_final" : "anticipo";
+      const montoEsperado = esTotal ? totalConEnvio : montoAnticipo;
+
       const comprobanteUrl = await subirComprobantePagoService(pedidoId, file);
 
       const pago = await registrarPagoPedidoService(pedidoId, {
-        tipo: "anticipo",
+        tipo: tipoPago,
         metodo: "qr",
         comprobanteUrl,
-        montoEsperado: montoAnticipo,
+        montoEsperado,
       });
 
       setPagoId(pago.id);
@@ -334,14 +339,16 @@ export function useVoucherFlujo({
     }
   };
 
-  // Confirmación de pago en efectivo (upsert)
   const handleConfirmarEfectivo = async () => {
     if (!pedidoId || !tipoEntrega || isRegistrandoPago) return;
 
     try {
       setIsRegistrandoPago(true);
       setIsUpdatingPedido(true);
-      const { montoAnticipo } = calcularTotalesPedido(cotizacion.precio_final ?? 0, tipoEntrega);
+      const { montoAnticipo } = calcularTotalesPedido(
+        cotizacion.precio_final ?? 0,
+        tipoEntrega
+      );
 
       const pago = await registrarPagoPedidoService(pedidoId, {
         tipo: "anticipo",
@@ -362,7 +369,6 @@ export function useVoucherFlujo({
     }
   };
 
-  // Cambiar opciones sin borrar el registro persistido
   const handleCambiarOpciones = () => {
     setTipoEntrega(null);
     setMetodoPago(null);

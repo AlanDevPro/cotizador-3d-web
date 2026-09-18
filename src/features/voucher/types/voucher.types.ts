@@ -2,6 +2,9 @@ import type { RefObject, ChangeEvent } from "react";
 
 export type TipoEntrega = "recoger" | "domicilio";
 export type MetodoPago = "efectivo" | "qr";
+export type TipoMontoPago = "anticipo" | "total";
+export type EstadoPagoPedido = "sin_pagar" | "anticipo" | "pagado";
+export type TipoPagoRegistro = "anticipo" | "pago_final";
 export type Tema = "rosa" | "morado";
 export type TabId = "general" | string;
 
@@ -24,15 +27,16 @@ export interface ActualizarOpcionesPedidoDTO {
   envioTipo?: TipoEntrega | string | null;
   envioCosto?: number | null;
   pagoTotal?: number | null;
+  pagoAnticipoPct?: number;
   envioDireccion?: string | null;
   envioUbicacionUrl?: string | null;
 }
 
 export interface RegistrarPagoPedidoDTO {
-  tipo: "anticipo" | "saldo" | "total";
-  metodo: "efectivo" | "qr";
+  tipo: TipoPagoRegistro;
+  metodo: MetodoPago;
   comprobanteUrl?: string | null;
-  montoEsperado?: number; // solo informativo (evento), nunca se persiste en pedido_pagos.monto
+  montoEsperado?: number;
 }
 
 export interface PedidoExistente {
@@ -44,13 +48,13 @@ export interface PedidoExistente {
   envio_ubicacion_url: string | null;
   pago_total: number | null;
   pago_monto_cobrado: number | null;
-  pago_estado: string | null;
+  pago_estado: EstadoPagoPedido | string | null;
 }
 
 export interface UltimoPago {
   id: string;
-  metodo: "efectivo" | "qr";
-  tipo: string;
+  metodo: MetodoPago;
+  tipo: TipoPagoRegistro | string;
   monto: number;
   comprobante_url: string | null;
   verificado: boolean;
@@ -75,17 +79,14 @@ export interface PiezaDetalle {
   precio_total_pieza: number;
   imagen_url?: string | null;
 
-  // Información de Filamento Normalizada
   filamento_id?: string | null;
   filamento?: FilamentoInfo | null;
 
-  // Especificaciones Técnicas
   peso_gramos?: number | null;
   tiempo_impresion_horas?: number | null;
   tiempo_preparacion_minutos?: number | null;
   tiempo_postprocesado_minutos?: number | null;
 
-  // Desglose Financiero Directo
   costo_material: number;
   costo_mano_obra: number;
   costo_depreciacion: number;
@@ -234,15 +235,19 @@ export interface TicketComprobanteProps {
   montoAnticipo: number;
   montoSaldo: number;
   metodoPago: MetodoPago | null;
+  tipoMontoPago?: TipoMontoPago | null;
   qrImagenSrc?: string | null;
   comprobanteArchivo: File | null;
   pedidoConfirmadoEfectivo: boolean;
-  verificado?: boolean; // Trazabilidad para la auditoría de pago
+  verificado?: boolean;
   direccionLocal?: string | null;
   notasLegales?: string[] | null;
   fileInputRef: RefObject<HTMLInputElement>;
   onSeleccionarComprobante: () => void;
-  onComprobanteChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  onComprobanteChange: (
+    e: ChangeEvent<HTMLInputElement>,
+    tipoMontoPago?: TipoMontoPago | null
+  ) => void;
   onConfirmarEfectivo: () => void;
   onCambiarOpciones: () => void;
 }
