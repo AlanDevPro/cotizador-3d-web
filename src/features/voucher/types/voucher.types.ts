@@ -1,3 +1,4 @@
+// src/features/voucher/types/voucher.types.ts
 import type { RefObject, ChangeEvent } from "react";
 
 export type TipoEntrega = "recoger" | "domicilio";
@@ -61,7 +62,7 @@ export interface UltimoPago {
 }
 
 // ==========================================
-// Dominios Principales (Filamento, Pieza, Empresa)
+// Dominios Principales (Filamento, Accesorios, Pieza, Empresa)
 // ==========================================
 
 export interface FilamentoInfo {
@@ -72,15 +73,37 @@ export interface FilamentoInfo {
   marca?: string | null;
 }
 
+/**
+ * 🔩 Accesorio aplicado a una pieza (proviene de cotizacion_item_accesorios
+ * + su catálogo accesorios). costoTotal ya viene calculado por la columna
+ * generada `costo_total_accesorio` (cantidad * costo_unitario_aplicado).
+ */
+export interface AccesorioAplicado {
+  id: string;
+  accesorioId: string;
+  nombre: string;
+  descripcion?: string | null;
+  cantidad: number;
+  unidadMedida: string;
+  costoUnitario: number;
+  costoTotal: number;
+}
+
 export interface PiezaDetalle {
   id: string;
   nombre_pieza: string;
   cantidad: number;
-  precio_total_pieza: number;
+  precio_total_pieza: number;       // base + ganancia + su diseño + sus accesorios (vista individual / hero)
+  precio_base_pieza: number;        // 🆕 base + ganancia SOLAMENTE (para tablas/filas y evitar doble conteo)
+  precio_personalizacion_pieza: number; // 🆕 parte proporcional de diseño asignada a esta pieza
   imagen_url?: string | null;
 
   filamento_id?: string | null;
   filamento?: FilamentoInfo | null;
+
+  // 🔩 Accesorios aplicados a esta pieza
+  accesorios: AccesorioAplicado[];
+  costo_accesorios_total: number;
 
   peso_gramos?: number | null;
   tiempo_impresion_horas?: number | null;
@@ -166,12 +189,16 @@ export interface FilaVoucher {
   descripcion: string;
   cantidad: number;
   precioUnitario: number;
-  total: number;
+  total: number; // 🔧 ahora representa SOLO base+ganancia (sin diseño ni accesorios) para sumar limpio en la tabla
   material: string;
   color: string;
   colorHex?: string | null;
   materialColor: string;
   detalleTecnico?: string | null;
+
+  // 🔩 Desglose de accesorios de esta fila/pieza (informativo/separado)
+  accesorios: AccesorioAplicado[];
+  costoAccesorios: number; // se suma aparte en el resumen total, ya no está "metido" a la fuerza
 }
 
 // ==========================================

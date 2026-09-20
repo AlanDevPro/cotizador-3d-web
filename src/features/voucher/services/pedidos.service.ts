@@ -216,11 +216,13 @@ export async function actualizarOpcionesPedidoService(
 export async function registrarPagoPedidoService(pedidoId: string, dto: RegistrarPagoPedidoDTO) {
   const montoARegistrar = dto.montoEsperado ?? 0;
 
+  // Se busca el último pago no verificado del pedido independientemente de su tipo anterior
   const { data: pagoExistente, error: errorBuscar } = await supabase
     .from("pedido_pagos")
-    .select("id, verificado")
+    .select("id, verificado, tipo")
     .eq("pedido_id", pedidoId)
-    .eq("tipo", dto.tipo)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (errorBuscar) {
@@ -240,6 +242,7 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
     const { data, error } = await supabase
       .from("pedido_pagos")
       .update({
+        tipo: dto.tipo,
         metodo: dto.metodo,
         monto: montoARegistrar,
         comprobante_url: dto.comprobanteUrl ?? null,
@@ -294,14 +297,14 @@ export async function registrarPagoPedidoService(pedidoId: string, dto: Registra
 export async function anularUltimoPagoPedidoService(pedidoId: string) {
   const { data: ultimoPago, error: errorBuscar } = await supabase
     .from("pedido_pagos")
-    .select("id")
+    .select("id, verificado")
     .eq("pedido_id", pedidoId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (errorBuscar) throw new Error(`No se pudo verificar pagos previos: ${errorBuscar.message}`);
-  if (!ultimoPago) return;
+  if (!ultimoPago || ultimoPago.verificado) return;
 
   const { error: errorEliminar } = await supabase
     .from("pedido_pagos")
@@ -319,13 +322,13 @@ export async function anularUltimoPagoPedidoService(pedidoId: string) {
 }
 
 // ==========================================
-// Recalcular pago_estado desde pedido_pagos.monto
+// Recalcular pago_estado desde pedido_pagos
 // ==========================================
 
 export async function actualizarEstadoPagoPedidoService(pedidoId: string) {
   const { data: pagos, error: errorPagos } = await supabase
     .from("pedido_pagos")
-    .select("monto, verificado")
+    .select("monto, verificado, tipo")
     .eq("pedido_id", pedidoId);
 
   if (errorPagos) throw new Error(`No se pudo calcular el pago acumulado: ${errorPagos.message}`);
@@ -348,12 +351,15 @@ export async function actualizarEstadoPagoPedidoService(pedidoId: string) {
     .reduce((acc, p) => acc + (Number(p.monto) || 0), 0);
 
   const pagoTotal = Number(pedido.pago_total) || 0;
+  const tienePagoFinal = (pagos ?? []).some((p) => p.tipo === "pago_final");
 
   let pagoEstado: "sin_pagar" | "anticipo" | "pagado" = "sin_pagar";
 
-  if (montoVerificado >= pagoTotal && pagoTotal > 0) {
+  // Evaluación profesional del estado de pago:
+  // Si el monto verificado cubre el total, O el monto reportado cubre el total, O existe un registro de tipo 'pago_final'
+  if (pagoTotal > 0 && (montoVerificado >= pagoTotal || montoReportado >= pagoTotal || tienePagoFinal)) {
     pagoEstado = "pagado";
-  } else if (montoReportado > 0) {
+  } else if (montoReportado > 0 || montoVerificado > 0) {
     pagoEstado = "anticipo";
   }
 

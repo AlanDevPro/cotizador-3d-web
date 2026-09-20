@@ -1,16 +1,17 @@
+// src/features/voucher/components/TicketComprobante.tsx
 import { Ticket } from "lucide-react";
 import type { TicketComprobanteProps } from "../../types/voucher.types";
 import type { TipoMontoPago } from "../VoucherSeleccionOpciones";
-import { TicketEncabezadoEmpresa } from "./TicketEncabezadoEmpresa";
-import { TicketInfoPedido } from "./TicketInfoPedido";
-import { TicketClienteEntrega } from "./TicketClienteEntrega";
-import { TicketDetalleTrabajo } from "./TicketDetalleTrabajo";
-import { TicketTotalesAnticipo } from "./TicketTotalesAnticipo";
-import { TicketPagoQR } from "./TicketPagoQR";
-import { TicketPagoEfectivo } from "./TicketPagoEfectivo";
-import { TicketNotasLegales } from "./TicketNotasLegales";
-import { TicketCodigoBarras } from "./TicketCodigoBarras";
-import { TicketAcciones } from "./TicketAcciones";
+import { TicketEncabezadoEmpresa } from "../ticket/TicketEncabezadoEmpresa";
+import { TicketInfoPedido } from "../ticket/TicketInfoPedido";
+import { TicketClienteEntrega } from "../ticket/TicketClienteEntrega";
+import { TicketDetalleTrabajo } from "../ticket/TicketDetalleTrabajo";
+import { TicketTotalesAnticipo } from "../ticket/TicketTotalesAnticipo";
+import { TicketPagoQR } from "../ticket/TicketPagoQR";
+import { TicketPagoEfectivo } from "../ticket/TicketPagoEfectivo";
+import { TicketNotasLegales } from "../ticket/TicketNotasLegales";
+import { TicketCodigoBarras } from "../ticket/TicketCodigoBarras";
+import { TicketAcciones } from "../ticket/TicketAcciones";
 
 interface TicketComprobanteExtraProps {
   /** Monto elegido por el cliente cuando el método es QR ("anticipo" 50% o "total" 100%) */
@@ -29,9 +30,15 @@ export function TicketComprobante(props: TicketComprobanteProps & TicketComproba
   const numPiezas = Number(props.subtotalOrden) || 0;
   const numEnvio = Number(props.costoEnvio) || 0;
   const numDiseno = Number(props.costoDiseno) || 0;
-  const totalCalculado = numPiezas + numEnvio + numDiseno;
 
-  // El pago en efectivo siempre es anticipo 50%. Con QR el cliente eligió 50% o 100%.
+  // 🔩 Total de accesorios de la orden obtenido de las filas del comprobante
+  const costoAccesoriosOrden = props.filasComprobante.reduce(
+    (acc, f) => acc + (Number(f.costoAccesorios) || 0),
+    0
+  );
+
+  const totalCalculado = numPiezas + numEnvio + numDiseno + costoAccesoriosOrden; // 🔧
+
   const esPagoTotalQR = props.metodoPago === "qr" && props.tipoMontoPago === "total";
   const porcentajeAnticipo = esPagoTotalQR ? 100 : 50;
   const anticipoCalculado = (totalCalculado * porcentajeAnticipo) / 100;
@@ -74,6 +81,7 @@ export function TicketComprobante(props: TicketComprobanteProps & TicketComproba
             metodoEnvio={props.tipoEntrega ?? undefined}
             costoEnvio={props.costoEnvio}
             costoDiseno={props.costoDiseno}
+            costoAccesorios={costoAccesoriosOrden}
             subtotalOrden={props.subtotalOrden}
             montoAnticipo={anticipoCalculado}
             montoSaldo={saldoCalculado}

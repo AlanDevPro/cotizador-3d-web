@@ -1,12 +1,12 @@
 // src/features/voucher/components/ticket/TicketTotalesAnticipo.tsx
-
-import { Receipt, Truck, Paintbrush, Layers, CheckCircle2 } from "lucide-react";
+import { Receipt, Truck, Paintbrush, Layers, Wrench } from "lucide-react";
 import { formatBs } from "../../utils/voucherFormatters";
 
 interface TicketTotalesAnticipoProps {
   metodoEnvio?: string | null;
   costoEnvio?: number | string;
   costoDiseno?: number | string;
+  costoAccesorios?: number | string;
   subtotalOrden: number | string;
   montoAnticipo?: number | string;
   porcentajeAnticipo?: number | string;
@@ -19,6 +19,7 @@ export function TicketTotalesAnticipo({
   metodoEnvio,
   costoEnvio = 0,
   costoDiseno = 0,
+  costoAccesorios = 0,
   subtotalOrden,
   montoAnticipo,
   porcentajeAnticipo = 50,
@@ -28,9 +29,10 @@ export function TicketTotalesAnticipo({
   const numPiezas = Number(subtotalOrden) || 0;
   const numEnvio = Number(costoEnvio) || 0;
   const numDiseno = Number(costoDiseno) || 0;
+  const numAccesorios = Number(costoAccesorios) || 0;
   const numPorcentaje = Number(porcentajeAnticipo) || 50;
 
-  const totalCalculado = numPiezas + numEnvio + numDiseno;
+  const totalCalculado = numPiezas + numEnvio + numDiseno + numAccesorios; // 🔧
 
   const numAnticipo =
     montoAnticipo !== undefined && montoAnticipo !== null
@@ -44,6 +46,7 @@ export function TicketTotalesAnticipo({
 
   const tieneEnvio = numEnvio > 0 || Boolean(metodoEnvio);
   const tieneDiseno = numDiseno > 0;
+  const tieneAccesorios = numAccesorios > 0;
 
   return (
     <div className="px-6 py-3 space-y-1.5 text-xs">
@@ -65,6 +68,19 @@ export function TicketTotalesAnticipo({
           </span>
           <span className="font-mono font-semibold text-amber-950">
             {formatBs(numDiseno)}
+          </span>
+        </div>
+      )}
+
+      {/* 🔩 Accesorios y componentes: sumado de forma independiente */}
+      {tieneAccesorios && (
+        <div className="flex items-center justify-between rounded-lg bg-sky-50/60 border border-sky-200/50 px-3 py-2 text-sky-900">
+          <span className="flex items-center gap-1.5 font-medium">
+            <Wrench className="h-3.5 w-3.5 text-sky-600" />
+            <span>Accesorios y componentes</span>
+          </span>
+          <span className="font-mono font-semibold text-sky-950">
+            {formatBs(numAccesorios)}
           </span>
         </div>
       )}
@@ -93,17 +109,17 @@ export function TicketTotalesAnticipo({
       </div>
 
       {mostrarDesglose && (
-  <div className="mt-2 rounded-lg bg-[var(--dark-bg)] px-3 py-2.5 text-white shadow-sm">
-    <div className="flex justify-between font-bold">
-      <span>Anticipo requerido ({numPorcentaje}%)</span>
-      <span className="font-mono">{formatBs(numAnticipo)}</span>
-    </div>
-    <div className="mt-1 flex justify-between text-slate-300">
-      <span>Saldo pendiente a la entrega</span>
-      <span className="font-mono font-medium">{formatBs(numSaldo)}</span>
-    </div>
-  </div>
-)}
+        <div className="mt-2 rounded-lg bg-[var(--dark-bg)] px-3 py-2.5 text-white shadow-sm">
+          <div className="flex justify-between font-bold">
+            <span>Anticipo requerido ({numPorcentaje}%)</span>
+            <span className="font-mono">{formatBs(numAnticipo)}</span>
+          </div>
+          <div className="mt-1 flex justify-between text-slate-300">
+            <span>Saldo pendiente a la entrega</span>
+            <span className="font-mono font-medium">{formatBs(numSaldo)}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

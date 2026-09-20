@@ -18,6 +18,7 @@ import {
   subirComprobantePagoService,
   getPedidoPorCotizacionIdService,
   getUltimoPagoPedidoService,
+  anularUltimoPagoPedidoService,
 } from "../services/pedidos.service";
 
 interface UseVoucherFlujoProps {
@@ -339,21 +340,26 @@ export function useVoucherFlujo({
     }
   };
 
-  const handleConfirmarEfectivo = async () => {
+  const handleConfirmarEfectivo = async (tipoMontoPago: TipoMontoPago | null = null) => {
     if (!pedidoId || !tipoEntrega || isRegistrandoPago) return;
 
     try {
       setIsRegistrandoPago(true);
       setIsUpdatingPedido(true);
-      const { montoAnticipo } = calcularTotalesPedido(
+
+      const { montoAnticipo, totalConEnvio } = calcularTotalesPedido(
         cotizacion.precio_final ?? 0,
         tipoEntrega
       );
 
+      const esTotal = tipoMontoPago === "total";
+      const tipoPago: TipoPagoRegistro = esTotal ? "pago_final" : "anticipo";
+      const montoEsperado = esTotal ? totalConEnvio : montoAnticipo;
+
       const pago = await registrarPagoPedidoService(pedidoId, {
-        tipo: "anticipo",
+        tipo: tipoPago,
         metodo: "efectivo",
-        montoEsperado: montoAnticipo,
+        montoEsperado,
       });
 
       setPagoId(pago.id);
@@ -369,9 +375,18 @@ export function useVoucherFlujo({
     }
   };
 
-  const handleCambiarOpciones = () => {
+  const handleCambiarOpciones = async () => {
+    if (pedidoId) {
+      try {
+        await anularUltimoPagoPedidoService(pedidoId);
+      } catch (error) {
+        console.warn("⚠️ No se pudo anular el pago previo:", error);
+      }
+    }
+
     setTipoEntrega(null);
     setMetodoPago(null);
+    setPagoId(null);
     setPedidoConfirmadoEfectivo(false);
     setComprobanteArchivo(null);
     setComprobanteVerificado(false);

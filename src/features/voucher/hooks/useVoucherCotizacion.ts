@@ -41,13 +41,15 @@ function construirFila(
     pieza: p,
     descripcion: p.nombre_pieza,
     cantidad: p.cantidad,
-    precioUnitario: p.cantidad > 0 ? p.precio_total_pieza / p.cantidad : p.precio_total_pieza,
-    total: p.precio_total_pieza,
+    precioUnitario: p.cantidad > 0 ? p.precio_base_pieza / p.cantidad : p.precio_base_pieza, // 🔧
+    total: p.precio_base_pieza, // 🔧
     material,
     color,
     colorHex,
     materialColor,
     detalleTecnico: detalleTecnicoPieza(p),
+    accesorios: p.accesorios ?? [],
+    costoAccesorios: p.costo_accesorios_total ?? 0,
   };
 }
 
@@ -102,8 +104,16 @@ export function useVoucherCotizacion({
     [filasComprobante]
   );
 
+  const costoAccesoriosOrden = useMemo(
+    () => filasComprobante.reduce((acc, f) => acc + (f.costoAccesorios || 0), 0),
+    [filasComprobante]
+  );
+
+  const costoDisenoOrden = cotizacion.costo_diseno_total || 0;
   const montoImpuestoOrden = cotizacion.monto_impuesto || 0;
-  const totalOrden = subtotalOrden + montoImpuestoOrden;
+
+  // 🔧 Total de la orden sumando explícitamente diseño y accesorios apartados de subtotalOrden
+  const totalOrden = subtotalOrden + montoImpuestoOrden + costoDisenoOrden + costoAccesoriosOrden;
 
   const { costoEnvio, totalConEnvio, montoAnticipo, montoSaldo } = useMemo(
     () => calcularTotalesPedido(totalOrden, tipoEntrega),
@@ -112,6 +122,11 @@ export function useVoucherCotizacion({
 
   const subtotalVista = useMemo(
     () => filasVista.reduce((acc, f) => acc + f.total, 0),
+    [filasVista]
+  );
+
+  const costoAccesoriosVista = useMemo(
+    () => filasVista.reduce((acc, f) => acc + (f.costoAccesorios || 0), 0),
     [filasVista]
   );
 
@@ -145,18 +160,12 @@ export function useVoucherCotizacion({
         `Garantía válida por ${garantiaDias} días tras la recepción del trabajo.`,
       ];
 
-  // Orden de prioridad del QR mostrado al cliente:
-  // 1. qrPagoUri explícito recibido por props (override manual/pruebas)
-  // 2. empresa.qr_pago_url: el QR bancario/billetera real cargado en
-  //    configuracion_empresa (el que realmente se debe usar para cobrar)
-  // 3. Generador de respaldo (solo texto informativo) si la empresa aún
-  //    no configuró su QR de pago
   const qrImagenSrc = useMemo(
     () =>
       qrPagoUri ||
       empresa?.qr_pago_url ||
       `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-        `Anticipo pedido ${codigoPedido} - ${empresaNombre} - Monto: ${montoAnticipo.toFixed(2)} Bs`
+        `Anticipo pedido ${codigoPedido} - ${empresaNombre} - Monto:${montoAnticipo.toFixed(2)} Bs`
       )}`,
     [qrPagoUri, empresa?.qr_pago_url, codigoPedido, empresaNombre, montoAnticipo]
   );
@@ -175,9 +184,11 @@ export function useVoucherCotizacion({
     subtotalVista,
     montoImpuestoVista,
     totalVista,
+    costoAccesoriosVista,
     filasComprobante,
     subtotalOrden,
     montoImpuestoOrden,
+    costoAccesoriosOrden,
     costoEnvio,
     totalConEnvio,
     montoAnticipo,
