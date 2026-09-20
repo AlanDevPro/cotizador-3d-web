@@ -1,16 +1,13 @@
-import { createClient } from "@supabase/supabase-js";
+// src/features/voucher/services/getCotizacionPorToken.ts
+import { supabaseServer } from "@/lib/supabaseServer"; // 🔒 USAR SIEMPRE EL CLIENTE DEL SERVIDOR
 import type {
   CotizacionPublica,
   PiezaDetalle,
   EmpresaInfo,
   VoucherData,
   FilamentoInfo,
+  AccesorioAplicado,
 } from "../types/voucher.types";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface DBFilamento {
   id: string;
@@ -18,6 +15,23 @@ interface DBFilamento {
   color: string;
   color_hex?: string | null;
   marca?: string | null;
+}
+
+// 🔩 Catálogo de accesorio (tabla `accesorios`)
+interface DBAccesorioCatalogo {
+  nombre: string;
+  descripcion?: string | null;
+  unidad_medida?: string | null;
+}
+
+// 🔩 Renglón de la tabla puente `cotizacion_item_accesorios`
+interface DBCotizacionItemAccesorio {
+  id: string;
+  accesorio_id: string;
+  cantidad: number;
+  costo_unitario_aplicado: number;
+  costo_total_accesorio: number; // columna GENERATED
+  accesorios: DBAccesorioCatalogo | DBAccesorioCatalogo[] | null;
 }
 
 interface DBCotizacionItem {
@@ -35,8 +49,9 @@ interface DBCotizacionItem {
   costo_mano_obra: number | null;
   costo_subtotal_item: number | null;
   filamento_id?: string | null;
-  imagen_url?: string | null; // 👈 nuevo — foto propia de esta pieza
+  imagen_url?: string | null;
   filamentos: DBFilamento | DBFilamento[] | null;
+  cotizacion_item_accesorios?: DBCotizacionItemAccesorio[] | null;
 }
 
 interface DBConfiguracionEmpresa {
@@ -61,26 +76,55 @@ interface DBEmpresa {
   configuracion_empresa?: DBConfiguracionEmpresa | DBConfiguracionEmpresa[] | null;
 }
 
+// 🔩 Mapea los renglones de cotizacion_item_accesorios a AccesorioAplicado[]
+function mapearAccesoriosPieza(item: DBCotizacionItem): AccesorioAplicado[] {
+  const raw = item.cotizacion_item_accesorios ?? [];
+  return raw.map((a) => {
+    const catalogo = Array.isArray(a.accesorios) ? a.accesorios[0] : a.accesorios;
+    return {
+      id: a.id,
+      accesorioId: a.accesorio_id,
+      nombre: catalogo?.nombre || "Accesorio",
+      descripcion: catalogo?.descripcion || null,
+      cantidad: Number(a.cantidad) || 0,
+      unidadMedida: catalogo?.unidad_medida || "unidad",
+      costoUnitario: Number(a.costo_unitario_aplicado) || 0,
+      costoTotal: Number(a.costo_total_accesorio) || 0,
+    };
+  });
+}
+
 function mapearPiezaItem(
   item: DBCotizacionItem,
   costoDirectoTotal: number,
   costoFallosTotal: number,
   montoGananciaTotal: number,
-  montoImpuestoTotal: number
+  montoImpuestoTotal: number,
+  costoDisenoTotal: number
 ): PiezaDetalle {
   const cantidad = Number(item.cantidad) || 1;
-  const subtotalDirecto = Number(item.costo_subtotal_item) || 0;
+  const subtotalSinManoObra = Number(item.costo_subtotal_item) || 0;
+  const manoObraPieza = (Number(item.costo_mano_obra) || 0) * cantidad;
+  const subtotalDirecto = subtotalSinManoObra + manoObraPieza;
 
   const proporcionPct = costoDirectoTotal > 0 ? subtotalDirecto / costoDirectoTotal : 0;
   const costoFallosPieza = costoFallosTotal * proporcionPct;
   const montoGananciaPieza = montoGananciaTotal * proporcionPct;
-  const costoBasePieza = subtotalDirecto + costoFallosPieza;
+  const personalizacionPieza = costoDisenoTotal * proporcionPct;
   const impuestoPieza = montoImpuestoTotal * proporcionPct;
 
-  const precioTotalPieza =
+  const costoBasePieza = subtotalDirecto + costoFallosPieza;
+  const accesorios = mapearAccesoriosPieza(item);
+  const costoAccesoriosTotal = accesorios.reduce((acc, a) => acc + a.costoTotal, 0);
+
+  // 🆕 SOLO base + ganancia + impuesto → esto va en las TABLAS ("Importe")
+  const precioBasePieza =
     subtotalDirecto > 0
       ? costoBasePieza + montoGananciaPieza + impuestoPieza
       : subtotalDirecto;
+
+  // Precio completo de ESTA pieza (para la vista individual del hero card)
+  const precioTotalPieza = precioBasePieza + personalizacionPieza + costoAccesoriosTotal;
 
   const rawFilamento = Array.isArray(item.filamentos)
     ? item.filamentos[0]
@@ -102,15 +146,18 @@ function mapearPiezaItem(
     nombre_pieza: item.nombre_pieza || "Pieza sin nombre",
     cantidad,
     precio_total_pieza: precioTotalPieza,
-    imagen_url: item.imagen_url || null, // 👈 ahora es la foto real de ESTA pieza
+    precio_base_pieza: precioBasePieza, // 🆕
+    imagen_url: item.imagen_url || null,
     peso_gramos: item.peso_gramos ? Number(item.peso_gramos) : null,
     tiempo_impresion_horas: item.tiempo_impresion_horas ? Number(item.tiempo_impresion_horas) : null,
     tiempo_preparacion_minutos: item.tiempo_preparacion_minutos ? Number(item.tiempo_preparacion_minutos) : null,
     tiempo_postprocesado_minutos: item.tiempo_postprocesado_minutos ? Number(item.tiempo_postprocesado_minutos) : null,
     filamento_id: item.filamento_id || filamento?.id || null,
     filamento,
+    accesorios,
+    costo_accesorios_total: costoAccesoriosTotal,
     costo_material: Number(item.costo_material) || 0,
-    costo_mano_obra: Number(item.costo_mano_obra) || 0,
+    costo_mano_obra: manoObraPieza,
     costo_depreciacion: Number(item.costo_amortizacion) || 0,
     costo_energia: Number(item.costo_energia) || 0,
     costo_mantenimiento: Number(item.costo_mantenimiento) || 0,
@@ -119,12 +166,14 @@ function mapearPiezaItem(
     costo_fallos_pieza: costoFallosPieza,
     costo_base_pieza: costoBasePieza,
     monto_ganancia_pieza: montoGananciaPieza,
+    precio_personalizacion_pieza: personalizacionPieza, // 🆕
   };
 }
 
 export async function getCotizacionPorToken(token: string): Promise<CotizacionPublica | null> {
   try {
-    const { data, error } = await supabase
+    // 🔒 Usamos supabaseServer para saltarnos las restricciones RLS con permisos de servidor
+    const { data, error } = await supabaseServer
       .from("cotizaciones")
       .select(`
         id,
@@ -186,6 +235,18 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
             color,
             color_hex,
             marca
+          ),
+          cotizacion_item_accesorios (
+            id,
+            accesorio_id,
+            cantidad,
+            costo_unitario_aplicado,
+            costo_total_accesorio,
+            accesorios (
+              nombre,
+              descripcion,
+              unidad_medida
+            )
           )
         )
       `)
@@ -203,6 +264,7 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
     const costoFallosTotal = Number(data.costo_fallos_total) || 0;
     const montoGananciaTotal = Number(data.monto_ganancia) || 0;
     const montoImpuestoTotal = Number(data.monto_impuesto) || 0;
+    const costoDisenoTotal = Number(data.costo_diseno_total) || 0;
 
     const rawItems = (data.cotizacion_items as unknown as DBCotizacionItem[]) || [];
     const piezasMapeadas = rawItems.map((item) =>
@@ -211,7 +273,8 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
         costoDirectoTotal,
         costoFallosTotal,
         montoGananciaTotal,
-        montoImpuestoTotal
+        montoImpuestoTotal,
+        costoDisenoTotal
       )
     );
 
@@ -251,7 +314,7 @@ export async function getCotizacionPorToken(token: string): Promise<CotizacionPu
       codigo_cotizacion: data.codigo_cotizacion ? String(data.codigo_cotizacion) : null,
       precio_final: Number(data.precio_final) || 0,
       monto_impuesto: data.monto_impuesto ? Number(data.monto_impuesto) : null,
-      costo_diseno_total: Number(data.costo_diseno_total) || 0,
+      costo_diseno_total: costoDisenoTotal,
       costo_directo_total: costoDirectoTotal,
       costo_indirecto_total: Number(data.costo_indirecto_total) || 0,
       costo_fallos_total: costoFallosTotal,

@@ -1,6 +1,6 @@
-import { Banknote, FileText, Hash, Package, Receipt, Box, Palette } from "lucide-react";
+import { Banknote, FileText, Hash, Package, Receipt, Box, Palette, Wrench } from "lucide-react";
 import type { FilaVoucher } from "../../types/voucher.types";
-import { formatBs } from "../../utils/voucherFormatters";
+import { formatBs, formatCantidadUnidad } from "../../utils/voucherFormatters";
 import { EncabezadoTabla } from "../shared/EncabezadoTabla";
 
 interface TicketDetalleTrabajoProps {
@@ -15,7 +15,7 @@ export function TicketDetalleTrabajo({ filas }: TicketDetalleTrabajoProps) {
 
       <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-900">
         <FileText className="h-3.5 w-3.5 text-[var(--brand)]" />
-        Detalle del trabajo (Impresión 3D)
+        Detalle de Impresión
       </p>
 
       <table className="w-full text-left text-xs">
@@ -62,16 +62,29 @@ export function TicketDetalleTrabajo({ filas }: TicketDetalleTrabajoProps) {
                       {colorTexto}
                       {fila.colorHex && (
                         <span className="inline-flex items-center gap-1 font-mono text-[9px] text-slate-400">
-                          
                           <span
                             className="inline-block h-2.5 w-2.5 rounded-full border border-slate-300 shadow-xs"
                             style={{ backgroundColor: fila.colorHex }}
                             title={fila.colorHex}
                           />
-                          
                         </span>
                       )}
                     </span>
+
+                    {/* 🔩 Accesorios aplicados a esta pieza, con cantidad y unidad de medida */}
+                    {fila.accesorios?.map((acc) => (
+                      <span
+                        key={acc.id}
+                        className="inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700"
+                        title={acc.descripcion ?? undefined}
+                      >
+                        <Wrench className="h-3 w-3 text-sky-600" />
+                        {formatCantidadUnidad(acc.cantidad, acc.unidadMedida)} {acc.nombre}
+                        <span className="font-mono text-[9px] text-sky-500">
+                          ({formatBs(acc.costoTotal)})
+                        </span>
+                      </span>
+                    ))}
                   </div>
                 </td>
                 <td className="py-2 text-right font-mono text-slate-600">

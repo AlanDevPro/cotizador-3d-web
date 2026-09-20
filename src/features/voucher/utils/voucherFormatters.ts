@@ -1,4 +1,4 @@
-//src/features/voucher/utils/voucherFormatters.ts
+// src/features/voucher/utils/voucherFormatters.ts
 import type { PiezaDetalle, FilaVoucher } from "../types/voucher.types";
 
 export function formatBs(monto: number): string {
@@ -36,6 +36,18 @@ export function formatFechaHora(fecha: Date): string {
   return `${fechaTexto} · ${horaTexto}`;
 }
 
+/**
+ * 🔩 Formatea cantidad + unidad de medida de un accesorio de forma legible.
+ * Ej: (2, "unidad") -> "2 unidades" | (1.5, "metro") -> "1.5 metro"
+ */
+export function formatCantidadUnidad(cantidad: number, unidadMedida?: string | null): string {
+  const unidad = (unidadMedida || "unidad").trim().toLowerCase();
+  if (unidad === "unidad") {
+    return `${cantidad} ${cantidad === 1 ? "unidad" : "unidades"}`;
+  }
+  return `${cantidad} ${unidad}`;
+}
+
 export function detalleTecnicoPieza(p: PiezaDetalle): string | null {
   const partes: string[] = [];
   if (typeof p.peso_gramos === "number" && p.peso_gramos > 0) {
@@ -56,13 +68,15 @@ export function mapearPiezaAFilaVoucher(pieza: PiezaDetalle): FilaVoucher {
     pieza,
     descripcion: pieza.nombre_pieza,
     cantidad: pieza.cantidad,
-    precioUnitario: pieza.cantidad > 0 ? pieza.precio_total_pieza / pieza.cantidad : 0,
-    total: pieza.precio_total_pieza,
+    precioUnitario: pieza.cantidad > 0 ? pieza.precio_base_pieza / pieza.cantidad : 0, // 🔧
+    total: pieza.precio_base_pieza, // 🔧 SIN diseño ni accesorios
     material,
     color,
     colorHex,
     materialColor: `${material} - ${color}`,
     detalleTecnico: detalleTecnicoPieza(pieza),
+    accesorios: pieza.accesorios ?? [],
+    costoAccesorios: pieza.costo_accesorios_total ?? 0,
   };
 }
 

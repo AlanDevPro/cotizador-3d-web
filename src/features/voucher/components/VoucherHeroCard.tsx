@@ -30,9 +30,14 @@ export function VoucherHeroCard({
 
   const esGeneral = !piezaSeleccionada;
 
+  // 🔹 Cálculo preciso y dinámico: Si es general, sumamos el precio total de cada pieza
+  // para evitar diferencias de redondeo con el backend y mantener coherencia absoluta con las tablas.
   const precioMostrado = piezaSeleccionada
-    ? piezaSeleccionada.precio_total_pieza
-    : cotizacion.precio_final;
+    ? Number(piezaSeleccionada.precio_total_pieza) || 0
+    : cotizacion.piezas.reduce(
+        (acc, p) => acc + (Number(p.precio_total_pieza) || 0),
+        0
+      );
 
   // Todas las fotos disponibles (una por pieza) — para el collage de "General"
   const imagenesPiezas = cotizacion.piezas

@@ -37,8 +37,8 @@ export function TicketPagoQR({
   if (!visible) return null;
 
   return (
-    <>
-      <div className="border-t border-dashed border-slate-200 px-5 py-4">
+    <> 
+      <div className="border-t-2 border-dashed border-slate-300 px-6 py-3"> 
         <p className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-900">
           <QrCode className="h-4 w-4 text-[var(--brand)]" />
           Pago con QR
